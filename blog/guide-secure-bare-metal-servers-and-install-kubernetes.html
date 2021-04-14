@@ -1,0 +1,56 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Guide to create a secure cluster of bare-metal servers and install Kubernetes</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2021-04-05" pubdate="pubdate">5 April 2021</time> by Alex Arica</div>
+
+                    <p>
+                        This guide explains the steps to follow in order to create a secure network of Debian
+                        based distro servers and install a Kubernetes cluster on them.
+                    </p>
+
+                    <h2>Step 1: Set-up a hardened Linux server</h2>
+                    <p>We want to apply the minimum set-up to
+                        <a target="_blank" href="setup-hardened-linux-server.html">Set-up a hardened Linux server</a>
+                        for each of our Debian based distros (e.g. Ubuntu).
+                    </p>
+
+                    <h2>Step 2: Secure servers behind a private network</h2>
+                    <p>Once we hardened our servers, we want to
+                        <a target="_blank" href="secure-servers-behind-private-network.html">Secure them behind a private network</a>
+                        to isolate them from outside and limit the attack surface.
+                    </p>
+
+                    <h2>Step 3: Install kubernetes on bare metal servers</h2>
+                    <p>Once we have hardened and secured our servers behind a private network, we are ready to
+                        <a target="_blank" href="install-kubernetes-on-bare-metal.html">
+                            Install Kubernetes</a>.
+                    </p>
+
+                    <h2>Step 4: Encrypt Etcd database</h2>
+                    <p>By default Kubernetes does not encrypt the data stored in its database. In the eventuality of an
+                        attacker stealing the database, we want to protect it by
+                        <a target="_blank" href="encrypt-etcd-database-in-kubernetes.html">
+                            Encrypting the Etcd database</a> .
+                    </p>
+
+                    <h2>Step 5: Check-out from private Docker registry in Kubernetes</h2>
+                    <p>Some containers are protected in private Docker registries. We are going to explain how to
+                        <a target="_blank" href="check-out-from-private-docker-registry-in-kubernetes.html">
+                            Check-out from private Docker registry in Kubernetes</a>.
+                    </p>
+
+                    <h2>Step 6: Publicly expose a website via HTTP and HTTPS with Kubernetes</h2>
+                    <p>Now we have a secure Kubernetes installation, we are ready to
+                        <a target="_blank" href="publicly-expose-website-via-http-and-https-kubernetes.html">
+                            Publicly expose a website via HTTP and HTTPS with Kubernetes</a>.
+                    </p>
+
+                </article>
+
+            </div>
+        </div>

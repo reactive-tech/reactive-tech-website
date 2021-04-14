@@ -1,0 +1,83 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Enable auto-update for Debian based distros</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2020-07-14" pubdate="pubdate">14 July 2020</time> by Alex Arica</div>
+
+                    <p>
+                        This blog post explains how to keep a server's packages automatically up-to-date (also called "Auto-update").
+                        To achieve this goal we are going to use the service "unattended-upgrades".
+                    </p>
+                    <p>The commands in this page are valid for Debian, Ubuntu and other Debian based distros on systemD.</p>
+
+                    <h2>Install "unattended-upgrades"</h2>
+
+                    <p>Let's install it:</p>
+                    <pre>
+sudo apt install unattended-upgrades -y
+                    </pre>
+
+                    <p>Check the service is running:</p>
+                    <pre>
+sudo systemctl status unattended-upgrades
+                    </pre>
+
+                    <p>Output example:</p>
+                    <pre>
+unattended-upgrades.service
+  Loaded: loaded (/lib/systemd/system/unattended-upgrades.service; enabled; vendor preset: enabled)
+  <b>Active: active (running)</b> since ...
+                    </pre>
+
+                    <h2>Enable auto-updates</h2>
+                    <p>Open the file:</p>
+                    <pre>
+sudo vi /etc/apt/apt.conf.d/50unattended-upgrades
+                    </pre>
+
+                    <p>To enable the automatic updates of the packages, uncomment the line below and save it:</p>
+                    <pre>
+“origin =Debian,codename=${distro_codename}-updates”;
+                    </pre>
+                    <p>"Auto-update" is now enabled.</p>
+
+
+                    <h2>Additional knowledge</h2>
+
+                    <p>This file allows to configure the frequency of auto updates. By default it is once a day.</p>
+                    <pre>
+sudo vi /etc/apt/apt.conf.d/20auto-upgrades
+                    </pre>
+
+                    <p>The logs about the status of auto updates is located in this folder:</p>
+                    <pre>
+sudo ls -al /var/log/unattended-upgrades
+                    </pre>
+
+                    <p>For example:</p>
+                    <pre>
+sudo less /var/log/unattended-upgrades/unattended-upgrades.log
+                    </pre>
+                    <pre>
+sudo less /var/log/unattended-upgrades/unattended-upgrades.log | grep "Packages that will be upgraded"
+                    </pre>
+
+
+                    <h2>Additional readings</h2>
+                    <p>
+                        Official Debian's <a target="_blank" href="https://wiki.debian.org/UnattendedUpgrades">doc about
+                        auto-updates</a>
+                    </p>
+                    <p>
+                        Good Article about <a target="_blank" href="https://linoxide.com/enable-automatic-updates-on-ubuntu-20-04/">
+                        auto-update on Ubuntu</a>
+                    </p>
+
+                </article>
+
+            </div>
+        </div>

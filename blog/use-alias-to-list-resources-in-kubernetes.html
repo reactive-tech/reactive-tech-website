@@ -1,0 +1,63 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Use an alias to list resources in Kubernetes</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2021-01-06" pubdate="pubdate">6 January 2021</time> by Alex Arica</div>
+
+                    <p>In Kubernetes, the command "kubectl get all" does not return all available resources. It returns
+                        a fix list of resources, as follows:</p>
+                    <pre>
+pods
+services
+daemonset
+replicasets
+deployments
+jobs
+                    </pre>
+                    <p>
+                        Since "get all" is limited by design, if we want to view a custom list of resources, one of the
+                        possible solution is to create a bash alias in the file "~/.bashrc".
+                    </p>
+
+                    <h2>Creation of a bash alias</h2>
+
+                    <p>Open "~/.bashrc":</p>
+                    <pre>
+vi ~/.bashrc
+                    </pre>
+
+                    <p>And in it an alias "kubectl-all", as follows:</p>
+                    <pre>
+alias kubectl-all='kubectl get pod,job,deployment,secret,svc,ingress,clusterissuer,issuer,certificate,certificaterequest,order,challenge'
+                    </pre>
+
+                    <p>Save it and then run:</p>
+                    <pre>
+source ~/.bashrc
+                    </pre>
+
+                    <p>
+                        From now, if we run the command "kubectl-all", Kubernetes will list the resources as defined in
+                        the alias. We can combine it to a namespace too. In the example below, we list all resources in
+                        the namespace "kube-system":
+                    </p>
+                    <pre>
+kubectl-all -n kube-system
+                    </pre>
+
+                    <h2>All available resources</h2>
+
+                    <p>To help us deciding which resources we would like to list, we can use a command provided by Kubernetes
+                        which lists all available resources' names:</p>
+                    <pre>
+kubectl api-resources -o name
+                    </pre>
+
+                </article>
+
+            </div>
+        </div>

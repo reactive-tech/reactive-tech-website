@@ -1,0 +1,61 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Check-out from private Docker registry in Kubernetes</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2021-01-12" pubdate="pubdate">12 January 2021</time> by Alex Arica</div>
+
+                    <p>
+                        Kubernetes has a built-in secret mechanism to automatically check-out private repositories from
+                        Docker registries. If you have a private repository in Docker, and would like to check-out containers
+                        from it, follow the steps in this blog post.
+                    </p>
+
+                    <h2>Add a secret with the Docker registry details</h2>
+                    <p>Let's add a secret with the Docker repository credentials and connection details, as follows:</p>
+                    <pre>
+kubectl create secret docker-registry [secret name] -n [namespace] --docker-server=https://index.docker.io/v1/ --docker-username=[docker account username] --docker-password=[docker account security token]
+                    </pre>
+                    <p>
+                        Make sure that the docker account token has read only access to your Docker registry.
+                        Kubernetes only requires to check out from repositories. If your Kubernetes cluster is compromised by an attacker,
+                        you will limit the attack surface by only storing the credentials of a read-only docker account.
+                    </p>
+
+                    <h2>In your deployment yaml, add the field “imagePullSecrets”</h2>
+                    <p>
+                        In each deployment yaml where you have container(s) to check-out from a private Docker repository,
+                        you need to specify the field: <i>imagePullSecrets: - name: [secret name]</i>
+                    </p>
+                    <pre>
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reactive-tech-website
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: reactive-tech-website
+  template:
+    metadata:
+      labels:
+        app: reactive-tech-website
+    spec:
+      <b>imagePullSecrets:
+          - name: [secret name]</b>
+      containers:
+        - image: reactivetechio/reactive-tech-website:latest
+          name: reactive-tech-website
+          ports:
+            - containerPort: 80
+              protocol: TCP
+
+                    </pre>
+                </article>
+
+            </div>
+        </div>

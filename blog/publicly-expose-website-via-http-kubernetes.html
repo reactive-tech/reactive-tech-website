@@ -1,0 +1,230 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Publicly expose a website via HTTP with Ingress Nginx and Kubernetes</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2021-03-18" pubdate="pubdate">18 March 2021</time> by Alex Arica</div>
+
+                    <p>In this blog post we are going to publicly expose a website via HTTP with Ingress Nginx controller
+                        in a bare-metal Kubernetes cluster.</p>
+
+                    <h2>Install Ingress Nginx controller</h2>
+                    <p>We are going to install the Ingress Nginx controller with the command available in the
+                        <a target="_blank" href="https://kubernetes.github.io/ingress-nginx/deploy/">Kubernetes official doc</a>.</p>
+                    <pre>
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v[version]/deploy/static/provider/baremetal/deploy.yaml
+                    </pre>
+                    <p>Since we are installing in a bare-metal Kubernetes, we can replace the variable [version] by the
+                        latest version shown in the
+                        <a target="_blank" href="https://kubernetes.github.io/ingress-nginx/deploy/#bare-metal">"bare-metal" installation section</a>.</p>
+                    <p>Alternatively, the latest version is available in the
+                        <a target="_blank" href="https://github.com/kubernetes/ingress-nginx/releases">official Kubernetes GitHub page</a>.
+                        Check the latest release version for "NGINX:[version]" and extract its version number.</p>
+                    <p>Once installed, Ingress controller creates a namespace "ingress-nginx" where it deploys its resources.
+                        Wait until all Nginx components' status indicate as running or completed:</p>
+                    <pre>
+kubectl get all -n ingress-nginx
+                    </pre>
+
+                    <p>Let's check the ports on which the Ingress controller listens for HTTP and HTTPS requests:</p>
+                    <pre>
+kubectl get svc ingress-nginx-controller -n ingress-nginx
+                    </pre>
+
+                    <p>Output example:</p>
+                    <pre>
+NAME                       TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)                      AGE
+ingress-nginx-controller   NodePort   10.103.241.100   none          80:30271/TCP,443:32174/TCP   3m18s
+                    </pre>
+                    <p>The most important information above are:
+                        <ul>
+                            <li>"80:30271/TCP": Ingress controller listens on all Kubernetes nodes on port 30271 for HTTP requests
+                                and it routes those requests to services configured with custom "Ingress" resources.
+                            </li>
+                            <li>"443:32174/TCP": Ingress controller listens on all Kubernetes nodes on port 32174 for HTTPS requests
+                                and it routes those requests to services configured with custom "Ingress" resources.
+                            </li>
+                        </ul>
+                    </p>
+                    <p> For example, if we have 2 nodes in a Kubernetes cluster, with IP addresses 192.168.0.2
+                        and 192.168.0.3, then the services configured with Ingress resources are accessible:
+                        <ul>
+                            <li>for HTTP requests: via 192.168.0.2:30271 and 192.168.0.3:30271
+                            </li>
+                            <li>for HTTPS requests: via 192.168.0.2:32174 and 192.168.0.3:32174
+                            </li>
+                        </ul>
+                    </p>
+                    <p>When configuring a load balancer, we use those IP:port details (e.g. 230.70.191:30271 ...)
+                        depending on whether the TCP requests received by the load balancer are on port 80 or 443.
+                        For example, for TCP requests received on port 80 (=HTTP) of the load balancer,
+                        I configured it so that it routes the requests to the most available IP ranges 192.168.0.2:30271
+                        and 192.168.0.3:30271. And for TCP requests received on port 443 (=HTTPS), the IP ranges would be
+                        192.168.0.2:32174 and 192.168.0.3:32174 .
+                    </p>
+                    <p>To resume, the routing would be:</p>
+                    <pre>
+User -> calls www.reactive-tech.io on port 80 (HTTP) -> external load balancer IP -> calls either node 192.168.0.2:30271 or 192.168.0.3:30271
+                    </pre>
+                    <pre>
+User -> calls www.reactive-tech.io on port 443 (HTTPS) -> external load balancer IP -> calls either node 192.168.0.2:32174 or 192.168.0.3:32174
+                    </pre>
+
+                    <h2>Create a namespace</h2>
+                    <p>It is a good practice to create a custom namespace for our custom resources.
+                        In our case, the idea is to have a namespace in which all static websites' resources are located.
+                        Let's create the namespace "static-websites".</p>
+                    <p>In a new file:</p>
+                    <pre>
+vi static-websites-namespace.yaml
+                    </pre>
+                    <p>Add:</p>
+                    <pre>
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: static-websites
+                    </pre>
+
+                    <p>Apply it to Kubernetes:</p>
+                    <pre>
+kubectl apply -f static-websites-namespace.yaml
+                    </pre>
+
+                    <h2>Deploy the website</h2>
+                    <p>The website's name is "reactive-tech-website" and we are using the docker image "nginx" which listens on container's port 80.</p>
+                    <p>In a new file:</p>
+                    <pre>
+vi reactive-tech-website-deployment.yaml
+                    </pre>
+                    <p>Add:</p>
+                    <pre>
+apiVersion: apps/v1
+kind: Deployment
+metadata:First
+  name: reactive-tech-website
+  namespace: static-websites
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: reactive-tech-website
+  template:
+    metadata:
+      labels:
+        app: reactive-tech-website
+    spec:
+      containers:
+        - image: nginx
+          name: reactive-tech-website
+          ports:
+            - containerPort: 80
+              protocol: TCP
+                    </pre>
+
+                    <p>Deploy it:</p>
+                    <pre>
+kubectl apply -f reactive-tech-website-deployment.yaml
+                    </pre>
+
+                    <h2>Deploy a service</h2>
+                    <p>We are going to deploy a service allowing to access to our website within the cluster.
+                        Kubernetes will assign a clusterIP to our service and expose it on port 80.
+                        For convenience, we called this service "reactive-tech-website" as well:</p>
+
+                    <p>In a new file:</p>
+                    <pre>
+vi reactive-tech-website-service.yaml
+                    </pre>
+                    <p>Add:</p>
+                    <pre>
+apiVersion: v1
+kind: Service
+metadata:
+  name: reactive-tech-website
+  namespace: static-websites
+spec:
+  selector:
+    app: reactive-tech-website
+  ports:
+    - protocol: "TCP"
+      port: 80
+                    </pre>
+
+                    <p>Deploy it:</p>
+                    <pre>
+kubectl apply -f reactive-tech-website-service.yaml
+                    </pre>
+
+                    <p>Our website is accessible within the cluster. Next, let's make it accessible via Ingress.</p>
+
+                    <h2>Deploy a custom Ingress configuration</h2>
+                    <p>Ingress Nginx controller is looking for any resources of type "Ingress" in order to configure the
+                        routing rules. We are going to route the domain name "www.reactive-tech.io" to our service "reactive-tech-website".</p>
+
+                    <p>In a new file:</p>
+                    <pre>
+vi reactive-tech-website-ingress.yaml
+                    </pre>
+                    <p>Add:</p>
+                    <pre>
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reactive-tech-website
+  namespace: static-websites
+  annotations:
+    nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+spec:
+  rules:
+    - host: "www.reactive-tech.io"
+      http:
+        paths:
+          - pathType: Prefix
+          - pathType: Prefix
+            path: "/"
+            backend:
+              service:
+                name: reactive-tech-website
+                port:
+                  number: 80
+
+                    </pre>
+                    <p>Note the usage of the annotation "nginx.ingress.kubernetes.io/from-to-www-redirect" which means
+                        that any requests for "reactive-tech.io" will be redirected to "www.reactive-tech.io".</p>
+
+                    <p>Deploy it:</p>
+                    <pre>
+kubectl apply -f reactive-tech-website-service.yaml
+                    </pre>
+                    <p>At this stage, the website reactive-tech-website is accessible on all Kubernetes nodes
+                        via port 30271 for HTTP requests and via port 32174 for HTTPS requests. Inside our cluster,
+                        we should be able to access to the website by using a CURL command:</p>
+                    <pre>
+curl -H "Host: www.reactive-tech.io" 192.168.0.2:30271
+OR
+curl -H "Host: www.reactive-tech.io" 192.168.0.3:30271
+...
+                    </pre>
+
+                    <h2>Configure www.reactive-tech.io to route to the load balancer's IP address</h2>
+                    <p>The last step is to change the "A" DNS record of the domain name "reactive-tech.io" to the IP address
+                        of the external load balancer. Our website should be accessible publicly via "www.reactive-tech.io".</p>
+                    <p>For a bare-metal Kubernetes installation, we are using an external load balancer which is configured
+                        to route TCP traffics to a list of Kubernetes nodes IP:port (e.g. via 192.168.0.2:30271, 192.168.0.3:30271, ...).
+                    </p>
+
+                    <h2>Next step: issue a SSL certificate</h2>
+                    <p>Our website is accessible via HTTP on "www.reactive-tech.io". However, if we call it using HTTPS
+                    it does not issue a valid SSL certificate and therefore the browser displays an error message.
+                    In the next blog post we are going to explain how to issue a valid
+                    <a href="publicly-expose-website-via-https-kubernetes.html">SSL certificate using Let's encrypt</a>.
+                    </p>
+
+                </article>
+
+            </div>
+        </div>

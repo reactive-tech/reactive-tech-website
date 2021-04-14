@@ -1,0 +1,291 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Set-up a hardened Linux server</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2020-09-18" pubdate="pubdate">18 September 2020</time> by Alex Arica</div>
+
+                    <p>In this blog post we are going to go through the minimum steps to set-up a hardened linux server. </p>
+
+                    <h2>Configure the root user</h2>
+
+                    <p>Once the server is installed, we can define a password for the root user, as follows:</p>
+                    <pre>
+sudo passwd
+                    </pre>
+
+                    <p>Then become root:</p>
+                    <pre>
+su -
+                    </pre>
+
+                    <p>Disable the root user's bash history:</p>
+                    <pre>
+echo "HISTFILESIZE=0" >> ~/.bashrc
+source ~/.bashrc
+history -c
+                    </pre>
+
+                    <p>Configure timezone</p>
+                    <pre>
+timedatectl set-timezone Europe/London
+                    </pre>
+
+                    <p>Update packages</p>
+                    <pre>
+apt-get update
+apt-get dist-upgrade
+apt autoremove
+                    </pre>
+                    <p>
+                        If any package was installed as a result of the command "dist-upgrade", it is usually required
+                        to reboot the server.
+                    </p>
+
+                    <h2>Create a custom user</h2>
+                    <p>
+                        It is not recommended to directly use the root user. We are going to create a custom user named
+                        "alex" and assign to it the sudo permission (sudoer) so that it can escalates as root only when required.
+                    </p>
+
+                    <p>Create user "alex":</p>
+                    <pre>
+adduser alex
+                    </pre>
+
+                    <p>Add user as sudoer:</p>
+                    <pre>
+usermod -aG sudo alex
+                    </pre>
+
+                    <p>Check the user is a sudoer. The following should display “sudo” among the groups:</p>
+                    <pre>
+groups alex
+                    </pre>
+
+                    <p>Test sudo works:</p>
+                    <pre>
+su - alex
+sudo apt-get update
+                    </pre>
+
+                    <p>If the above works, exit and login via SSH as "alex" to test this user can login via SSH:</p>
+                    <pre>
+exit
+exit
+exit
+ssh alex@[server ip]
+                    </pre>
+
+                    <p>Disable the bash history for alex:</p>
+                    <pre>
+echo "HISTFILESIZE=0" >> ~/.bashrc
+source ~/.bashrc
+history -c
+                    </pre>
+
+                    <h2>User created by the hosting provider</h2>
+                    <p>
+                        When a server is installed by a hosting company, they may create a custom user
+                        allowing to login the first time. For example, the hosting company OVH creates a user based on the
+                        installed linux distribution (e.g. user "ubuntu"). Now we have created our own custom user ("alex"),
+                        we can remove the user created by the hosting company.
+                    </p>
+                    <pre>
+sudo deluser [username created by hosting company] --remove-home
+                    </pre>
+                    <p>
+                        Note: On Debian the option "--remove-home" does not work without perl. In that case, if we do not
+                        want to install perl, please delete the user's home folder manually:
+                    </p>
+                    <pre>
+sudo rm -fr /home/[username created by hosting company]
+                    </pre>
+
+                    <p>Check the home folder was deleted for [username created by hosting company]:</p>
+                    <pre>
+ls -al /home/
+                    </pre>
+
+                    <h2>Login to the server using a SSH key</h2>
+
+                    <p>First, exit the server:</p>
+                    <pre>
+exit
+                    </pre>
+
+                    <p>
+                        If we do not have a SSH key, we are going to create it on the client computer (your laptop or desktop computer).
+                        When creating it, it is highly recommended to set a passphrase for additional security.
+                    </p>
+                    <p>Create a SSH key on the client computer:</p>
+                    <pre>
+ssh-keygen -t rsa
+                    </pre>
+                    <p>The generated key should be in the folder “~/.ssh/”</p>
+
+                    <p>Copy the created SSH public key from the client computer to the server:</p>
+                    <pre>
+ssh-copy-id -i ~/.ssh/id_rsa.pub alex@[server ip]
+                    </pre>
+
+                    <p>Login to the server to check it is working:</p>
+                    <pre>
+ssh alex@[server ip]
+                    </pre>
+                    <p>
+                        If it works, it should not ask for a password. If you have set a passphrase when creating the SSH
+                        key then it will ask for it.
+                    </p>
+
+                    <h2>Disable SSH login with password</h2>
+                    <p>We assume that you are logged to the server as a custom user (e.g. "alex").</p>
+                    <p>Open:</p>
+                    <pre>
+sudo vi /etc/ssh/sshd_config
+                    </pre>
+
+                    <p>Set the following options’ values to “no”: </p>
+                    <ul>
+                        <li>PasswordAuthentication: no</li>
+                        <li>ChallengeResponseAuthentication: no</li>
+                        <li>PermitRootLogin: no</li>
+                        <li>UsePAM: no</li>
+                    </ul>
+
+                    <p>Add this line to only allow a custom user (e.g. "alex") to login via SSH:</p>
+                    <pre>
+AllowUsers alex
+                    </pre>
+                    <p>Save the file.</p>
+
+                    <p>Check all values:</p>
+                    <pre>
+cat /etc/ssh/sshd_config | grep PasswordAuthentication
+cat /etc/ssh/sshd_config | grep ChallengeResponseAuthentication
+cat /etc/ssh/sshd_config | grep PermitRootLogin
+cat /etc/ssh/sshd_config | grep UsePAM
+cat /etc/ssh/sshd_config | grep AllowUsers
+                    </pre>
+
+                    <p>Restart SSHD daemon</p>
+                    <pre>
+sudo systemctl restart sshd
+                    </pre>
+
+                    <p>
+                        In case of there is an issue with the config changes, do not close the current terminal window.
+                        Open a new terminal window and try connecting, as follows:
+                    </p>
+                    <pre>
+ssh alex@[server ip]
+                    </pre>
+                    <p>
+                        If it is working, we can close the old terminal window. If it does not work, then use the old
+                        terminal window to check the contents of the file "/etc/ssh/sshd_config" in order to identify
+                        where the error could be.
+                    </p>
+
+                    <h2>Enable auto-updates of packages</h2>
+                    <p>
+                        Auto-updates allow keeping a server's packages automatically up-to-date. Please follow the
+                        instructions <a target="_blank" href="/blog/enable-auto-update-debian-distros.html">here</a>.
+                    </p>
+
+                    <h2>Remove known insecure packages</h2>
+                    <p>
+                        Remove insecure services like Mail service, Telnet service, RSH service, NIS service, TFTP service
+                        and TALK service:
+                    </p>
+                    <pre>
+sudo apt-get --purge remove xinetd nis yp-tools tftpd atftpd tftpd-hpa telnetd rsh-server rsh-redone-server
+                    </pre>
+
+                    <h2>Check ports listened by internal services with "lsof"</h2>
+                    <p>On Debian you may have to install lsof, as follows:</p>
+                    <pre>
+sudo apt-get install lsof
+                    </pre>
+
+                    <p>List the ports listened by internal services:</p>
+                    <pre>
+sudo lsof -i | grep LISTEN
+                    </pre>
+                    <p>
+                        The output should only show the SSHD daemon listening to external traffic on port 22. If there are
+                        other ports opened, and if they are unwanted, please remove the packages the services(s) depend on.
+                    </p>
+                    <p>
+                        For example, with the command "lsof" we noticed that on a Debian distro the SMTP service "Exim"
+                        is installed and running by default and it is listening on port 25. If we want to remove this service,
+                        we need to find the list of packages it is depending on:
+                    </p>
+                    <pre>
+dpkg -l | grep exim
+                    </pre>
+
+                    <p>Output example:</p>
+                    <pre>
+exim4-base            4.94-15    amd64        support files for all Exim MTA (v4) packages
+exim4-config          4.94-15    all          configuration for the Exim MTA (v4)
+exim4-daemon-light    4.94-15    amd64        lightweight Exim MTA (v4) daemon
+                    </pre>
+
+                    <p>Let's remove those packages:</p>
+                    <pre>
+sudo apt-get purge exim4-base exim4-config exim4-daemon-light
+                    </pre>
+
+                    <p>Once completed, we can also remove the obsolete packages which were installed with the removed
+                        packages above:</p>
+                    <pre>
+sudo apt-get autoremove
+                    </pre>
+
+                    <h2>Done</h2>
+                    <p>Once all sections above are completed, you have a minimum hardened set-up for a Linux server.</p>
+                    <br/>
+
+                    <h2>Additional actions to consider</h2>
+
+
+                    <h3>Disabling Root Cron Jobs</h3>
+
+                    <p>List cron jobs:</p>
+                    <pre>
+sudo ls /etc/cron*
+                    </pre>
+
+                    <p>
+                        Then go to the listed file(s) to remove the app which is unwanted. For example, we can remove
+                        "bsdmainutils":
+                    </p>
+                    <pre>
+sudo apt-get purge bsdmainutils
+                    </pre>
+
+                    <h3>List services and stop the ones we do not want to use</h3>
+                    <p>List services:</p>
+                    <pre>
+sudo service --status-all
+OR
+sudo systemctl list-unit-files --state=enabled
+                    </pre>
+
+                    <p>Get info about a service:</p>
+                    <pre>
+sudo systemctl status sendmail
+                    </pre>
+
+                    <p>Disable a service</p>
+                    <pre>
+sudo systemctl disable sendmail
+                    </pre>
+
+                </article>
+
+            </div>
+        </div>

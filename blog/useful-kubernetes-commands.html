@@ -1,0 +1,133 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Useful Kubernetes commands</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2020-11-08" pubdate="pubdate">8 November 2020</time> by Alex Arica</div>
+
+                    <h2>Redeploy containers</h2>
+
+                    <p>Redeploy all deployments:</p>
+                    <pre>
+kubectl rollout restart deployment
+                    </pre>
+
+                    <h2>Isolate node</h2>
+
+                    <p>Isolate a node to prevent new work being scheduled:</p>
+                    <pre>
+kubectl cordon &lt;node name&gt;
+                    </pre>
+
+                    <p>Un-isolate a node:</p>
+                    <pre>
+kubectl uncordon &lt;node name&gt;
+                    </pre>
+
+                    <h2>Display logs</h2>
+
+                    <p>Display the events:</p>
+                    <pre>
+kubectl get events
+kubectl get events -n [namespace]
+                    </pre>
+
+                    <p>Display pod's logs:</p>
+                    <pre>
+kubectl logs hello-node-7bf65
+
+# filter logs by label
+kubectl logs -l app=hello-node
+
+# stream output
+kubectl logs -f hello-node-7bf65
+
+# last hour's logs
+kubectl logs --since=1h -lapp=hello-node
+                    </pre>
+
+                    <p>Display logs of a Pod's init-container "setup-replica-data-directory":</p>
+                    <pre>
+kubectl logs hello-node-7bf65 -c setup-replica-data-directory
+                    </pre>
+
+                    <p>Display a service's logs:</p>
+                    <pre>
+kubectl logs services/hello-node
+                    </pre>
+
+                    <h2>Connect to a container</h2>
+
+                    <p>Run a command in a pod:</p>
+                    <pre>
+kubectl exec -it &lt;podName&gt; -- [command]
+kubectl exec hello-7bf -- nslookup zookeeper
+                    </pre>
+
+                    <p>Access in shell mode into a pod:</p>
+                    <pre>
+kubectl exec -it &lt;podName&gt; bash
+kubectl exec -it hello-7bf bash
+                    </pre>
+
+                    <h2>"Get" and "describe" commands</h2>
+
+                    <p>List all resources:</p>
+                    <pre>
+kubectl get all -o wide
+                    </pre>
+                    <p>
+                        You can also <a href="/blog/use-alias-to-list-resources-in-kubernetes.html">use an alias to list
+                        resources in Kubernetes</a>
+                    </p>
+
+                    <p>List nodes:</p>
+                    <pre>
+kubectl get nodes -o wide
+                    </pre>
+
+                    <p>List pods:</p>
+                    <pre>
+kubectl get pods -o wide
+kubectl get pods -w -o wide # -w to stream output
+
+kubectl get pods -o wide --all-namespaces
+
+kubectl get pods -o wide -l app=nginx
+
+# Add the columns for label’s keys “app”, “tier” and “role”
+kubectl get pods -Lapp -Ltier -Lrole
+                    </pre>
+
+                    <p>View a pod's details:</p>
+                    <pre>
+# get pod’s yaml
+kubectl get pod hello-node-7bf657c596-2qfrr -o yaml
+
+# describe pod's properties
+kubectl describe pod hello-node-7bf657c596-2qfrr
+                    </pre>
+
+                    <p>View a service's details:</p>
+                    <pre>
+kubectl describe services/hello-node
+                    </pre>
+
+                    <p>List many resources, services, storage classes, persistence volumes and persistence volume claims:</p>
+                    <pre>
+kubectl get svc,sc,pv,pvc -o wide
+                    </pre>
+
+                    <h2>Port forwarding</h2>
+                    <p>Create a port forwarding of a container to localhost:8080 :</p>
+                    <pre>
+kubectl port-forward svc/wordpress 8080:80
+                    </pre>
+
+                </article>
+
+            </div>
+        </div>

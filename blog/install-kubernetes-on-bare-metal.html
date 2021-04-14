@@ -1,0 +1,605 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Install kubernetes on bare metal servers</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2021-02-20" pubdate="pubdate">20 February 2021</time> by Alex Arica</div>
+
+                    <p>We are going to install Kubernetes on bare metal servers (= dedicated servers) on Debian based distros.</p>
+                    <p>We will use "kubeadmn" which is the official Kubernetes cluster initialiser.</p>
+                    <p>In this tutorial, our Kubernetes cluster has 2 bare metal servers: one server where a control-panel
+                        will be installed and one server where a worker will be installed.</p>
+
+                    <h1>Prepare the bare metal servers</h1>
+
+                    <p>These instructions are run on both servers.</p>
+
+                    <h2>Note about network interfaces</h2>
+                    <p>
+                        By default, Kubernetes' components check the default gateway and retrieve the details of the network
+                        interface it is associated with. They use that network interface to configure their IP addresses.
+                        It is possible to change this behaviour and use a different network interface.
+                    </p>
+
+                    <p>Kubernetes doc about network interfaces:</p>
+                    <pre>
+&lt;&lt;If you have more than one network adapter, and your Kubernetes components are not reachable on the default route, we recommend you add IP route(s) so Kubernetes cluster addresses go via the appropriate adapter.&gt;&gt;
+                    </pre>
+
+                    <p>
+                        If the servers have many network interfaces, check that the default gateway is associated with
+                        the network interface that you expect, by running:
+                    </p>
+                    <pre>
+ip route
+                    </pre>
+
+                    <p>And if the displayed default gateway is not linked to the network interface that you expected,
+                        it is recommended to add a default gateway with the expected network interface, as follows:</p>
+                    <pre>
+ip route add default via [gateway IP address] dev [network interface's name]
+                    </pre>
+
+                    <h2>Set a domain name for the control-plane's cluster endpoint</h2>
+                    <p>
+                        In this installation, we are going to have one control plane only. But in the future, we may want to add
+                        additional control planes to improve the resiliency of our Kubernetes cluster. If one server where a
+                        control plane runs has a defect, the other servers where additional control planes run would keep
+                        the cluster available. To prepare to the eventuality of having many control planes in the future,
+                        we need to create a domain name (e.g. "cluster-endpoint") with the IP address of our only control plane.
+                        If in the future we have more than one control planes, that domain name can be assigned to the address
+                        of the external load balancer in front of the control plane instances so that the traffic between the
+                        control planes is load balanced.
+                    </p>
+                    <p>Create a domain name "cluster-endpoint":</p>
+                    <pre>
+cat &lt;&lt;EOF | sudo tee -a /etc/hosts
+[Control plane’s IP address] cluster-endpoint
+EOF
+                    </pre>
+
+                    <p>Test:</p>
+                    <pre>
+ping cluster-endpoint
+                    </pre>
+
+                    <h2>Kubernetes pre-installation checks</h2>
+
+                    <h3>Disable Swap</h3>
+
+                    <p>Run this command:</p>
+                    <pre>
+sudo swapoff -a
+                    </pre>
+
+                    <p>And in the file /etc/fstab add a # in front of the row(s) about swap:</p>
+                    <pre>
+sudo vi /etc/fstab
+                    </pre>
+
+                    <p>For example:</p>
+                    <pre>
+<b>#</b> UUID=c2f8e4ca-d822-4ed9-ae1b-123346d9c3a0 none   swap      sw      0       0
+                    </pre>
+
+                    <h3>Letting iptables see bridged traffic</h3>
+
+                    <p>
+                        Kubernetes requires the Linux node's iptables to correctly see bridged traffic.
+                    </p>
+
+                    <p>Let's make sure the module "br_netfilter" is always available on reboot:</p>
+                    <pre>
+cat &lt;&lt;EOF | sudo tee /etc/modules-load.d/k8s.conf
+br_netfilter
+EOF
+                    </pre>
+
+                    <p>Enable that module without having to reboot:</p>
+                    <pre>
+sudo modprobe br_netfilter
+                    </pre>
+
+                    <p>Let's make sure the required system configs are always available on reboot:</p>
+                    <pre>
+cat &lt;&lt;EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+                    </pre>
+
+                    <p>Enable those system configs without having to reboot:</p>
+                    <pre>
+sudo sysctl --system
+                    </pre>
+
+                    <h2>Set-up Docker certs and repo</h2>
+
+                    <p>Install the required packages:</p>
+                    <pre>
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+                    </pre>
+
+                    <h3>Add Docker's official GPG key</h3>
+
+                    <p>For Ubuntu:</p>
+                    <pre>
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+                    </pre>
+
+                    <p>For Debian:</p>
+                    <pre>
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+                    </pre>
+
+                    <h3>Add Docker apt repository</h3>
+
+                    <p>For Ubuntu:</p>
+                    <pre>
+echo \
+  "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+                    </pre>
+
+                    <p>For Debian:</p>
+                    <pre>
+echo \
+  "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian \
+  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+                    </pre>
+
+                    <h2>Install ContainerD</h2>
+
+                    <p>
+                        ContainerD is a container runtime. Docker is based on ContainerD and consequently we do not need
+                        to install a Docker runtime anymore. This is in line with Kubernetes community's decision to move
+                        away from the Docker runtime.
+                    </p>
+                    <p>Let's make sure the required Linux modules by ContainerD are always available on reboot:</p>
+                    <pre>
+cat &lt;&lt;EOF | sudo tee /etc/modules-load.d/containerd.conf
+overlay
+br_netfilter
+EOF
+                    </pre>
+
+                    <p>Enable those modules without having to reboot:</p>
+                    <pre>
+sudo modprobe overlay
+sudo modprobe br_netfilter
+                    </pre>
+
+                    <p>Let's make sure the required system configs are always available on reboot:</p>
+                    <pre>
+cat &lt;&lt;EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.ipv4.ip_forward                 = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+EOF
+                    </pre>
+
+                    <p>Enable those system configs without having to reboot:</p>
+                    <pre>
+sudo sysctl --system
+                    </pre>
+
+                    <p>Install packages:</p>
+                    <pre>
+sudo apt-get update
+sudo apt-get install -y containerd.io
+                    </pre>
+
+                    <p>Set default containerD configuration:</p>
+                    <pre>
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml
+                    </pre>
+
+                    <p>
+                        Configure in the config.toml to use the systemd cgroup driver by setting the option
+                        “SystemdCgroup” to true:
+                    </p>
+                    <pre>
+sudo vi /etc/containerd/config.toml
+                    </pre>
+
+                    <p>In the file above, add "SystemdCGroup = true" in the following location:</p>
+                    <pre>
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+  ...
+  <b>[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]</b>
+    <b>SystemdCgroup = true</b>
+                    </pre>
+
+                    <p>Restart ContainerD:</p>
+                    <pre>
+sudo systemctl restart containerd
+                    </pre>
+
+                    <h2>Install kubernetes components</h2>
+
+                    <p>Download the Google Cloud public signing key:</p>
+                    <pre>
+sudo curl -fsSLo /usr/share/keyrings/kubernetes-archive-keyring.gpg https://packages.cloud.google.com/apt/doc/apt-key.gpg
+                    </pre>
+
+                    <p>Add Kubernetes apt repository:</p>
+                    <pre>
+echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+                    </pre>
+
+                    <p>Install kubeadm, kubelet and kubectl on all machines:</p>
+                    <pre>
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+                    </pre>
+                    <p>The kubelet is now restarting every few seconds, as it waits in a crash loop for kubeadm to tell it what to do.</p>
+
+                    <p>Check connectivity to grx.io.container image registry by running:</p>
+                    <pre>
+sudo kubeadm config images pull
+                    </pre>
+
+
+                    <h1>Initialise the Control-panel and create a cluster</h1>
+
+                    <p>These instructions are run on the server which will host the Control-panel.</p>
+
+                    <h2>Creating a cluster with kubeadm</h2>
+
+                    <p>Generate a token and save it:</p>
+                    <pre>
+kubeadm token generate
+                    </pre>
+                    <p>The token value is going to be used inside “init-conf.yaml” below.</p>
+
+                    <p>Create a config file with the default init configurations:</p>
+                    <pre>
+kubeadm config print init-defaults >> init-conf.yaml
+                    </pre>
+                    <p>Open it:</p>
+                    <pre>
+vi init-conf.yaml
+                    </pre>
+
+                    <p>Add in it the following configurations marked in bold:</p>
+                    <pre>
+apiVersion: kubeadm.k8s.io/v1beta2
+kind: InitConfiguration
+bootstrapTokens:
+- groups:
+  - system:bootstrappers:kubeadm:default-node-token
+  <b>token: [the generated token]</b>
+  ttl: 24h0m0s
+  usages:
+  - signing
+  - authentication
+localAPIEndpoint:
+  <b>advertiseAddress: [server’s IP]  # the IP address of the control plane server</b>
+  bindPort: 6443
+nodeRegistration:
+  <b>criSocket: /run/containerd/containerd.sock</b>
+  <b>name: [server’s hostname]</b>
+  taints:
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/master
+---
+apiVersion: kubeadm.k8s.io/v1beta2
+kind: ClusterConfiguration
+apiServer:
+  timeoutForControlPlane: 4m0s
+certificatesDir: /etc/kubernetes/pki
+clusterName: kubernetes
+controllerManager: {}
+dns:
+  type: CoreDNS
+etcd:
+  local:
+    dataDir: /var/lib/etcd
+imageRepository: k8s.gcr.io
+<b>kubernetesVersion: [<a target="_blank" href="https://github.com/kubernetes/kubernetes/releases">latest version]</a></b>
+<b>controlPlaneEndpoint: cluster-endpoint</b>
+networking:
+  dnsDomain: cluster.local
+  <b>serviceSubnet: 10.96.0.0/12</b>
+  <b>podSubnet: 10.244.0.0/16</b>
+scheduler: {}
+<b>---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd</b>
+
+                    </pre>
+
+                    <p>In the YAML above, all available fields for the kinds "InitConfiguration" and "ClusterConfiguration"
+                        are available here:
+                        <a target="_blank" href="https://pkg.go.dev/k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1beta2#InitConfiguration">
+                            InitConfiguration</a>,
+                        <a target="_blank" href="https://pkg.go.dev/k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1beta2#ClusterConfiguration">
+                            ClusterConfiguration</a>
+                    </p>
+
+                    <p>
+                        <u>Optional</u>: if you would like to pass runtime arguments to "kubelet", in the YAML above you could
+                        add the field "kubeletExtraArgs" under the field "nodeRegistration". For example, if you want to
+                        specify an IP address that Kubelet should assign to a node in the cluster:
+                    </p>
+                    <pre>
+nodeRegistration:
+  ...
+  <b>kubeletExtraArgs:
+    node-ip: [server’s IP same as advertiseAddress]</b>
+   ...
+                    </pre>
+                    <p>
+                        Mode details about the field "nodeRegistration" are available here:
+                        <a target="_blank" href="https://pkg.go.dev/k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1beta2#NodeRegistrationOptions">
+                            NodeRegistrationOptions</a>
+                    </p>
+
+                    <p>Initialise Kubernetes Control-plane:</p>
+                    <pre>
+sudo kubeadm init --config=init-conf.yaml
+                    </pre>
+
+                    <p>
+                        The command above is going to initialise a new Kubernetes cluster with a control plane.
+                        Once it is completed, it will display the credentials allowing to joind additional nodes to the cluster.
+                        Please save those values for "token" and "discovery-token-ca-cert-hash".
+                    </p>
+
+                    <p>
+                        On the server, add the Kuberbetes's configuration files in your user's home folder in order to access to the
+                        cluster with the command "kubectl":
+                    </p>
+                    <pre>
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+                    </pre>
+
+                    <p>(optional) For root user:</p>
+                    <pre>
+export KUBECONFIG=/etc/kubernetes/admin.conf
+echo "export KUBECONFIG=/etc/kubernetes/admin.conf" >> ~/.bashrc
+                    </pre>
+
+                    <h2>Installing a pod network add-on</h2>
+
+                    <p>Download Calico's config YAML and set the value for "podSubnet":</p>
+                    <pre>
+wget https://docs.projectcalico.org/manifests/calico.yaml
+                    </pre>
+
+                    <p>Open the downloaded file:</p>
+                    <pre>
+vi calico.yaml
+                    </pre>
+                    <p>And find the constant "CALICO_IPV4POOL_CIDR", uncomment it and set as value 10.244.0.0/16, as below:</p>
+                    <pre>
+            - name: CALICO_IPV4POOL_CIDR
+              value: "10.244.0.0/16"
+                    </pre>
+
+                    <p>Install Calico:</p>
+                    <pre>
+kubectl apply -f calico.yaml
+                    </pre>
+
+
+                    <h1>Check the cluster</h1>
+
+                    <p>
+                        From that point, we have a Kubernetes cluster running with one Control-plane node.
+                        Let's check the cluster is healthy. Run the following commands on the control plane server.
+                    </p>
+
+                    <p>From the control plane, list all nodes:</p>
+                    <pre>
+kubectl get nodes -o wide
+                    </pre>
+
+                    <p>From the control plane, list all pods:</p>
+                    <pre>
+kubectl get pods --all-namespaces -o wide
+                    </pre>
+
+                    <p>From the control plane, view the services running in Kubernetes:</p>
+                    <pre>
+kubectl cluster-info
+                    </pre>
+
+                    <p>
+                        Once the Kubernetes cluster is ready, we can add more workers nodes by following the instructions
+                        in the next section.
+                    </p>
+
+
+                    <h1>Join the cluster as a worker node</h1>
+
+                    <p>These instructions are run on the server which will host the worker.</p>
+
+                    <p>
+                        A worker node is where the containers for your custom services will run. By default those containers
+                        do not run on the control plane(s)' nodes.
+                    </p>
+
+                    <p>Create a config file with the default join configurations:</p>
+                    <pre>
+kubeadm config print join-defaults >> join-conf.yaml
+                    </pre>
+
+                    <p>Open it:</p>
+                    <pre>
+vi join-conf.yaml
+                    </pre>
+
+                    <p>Add in it by adding the following configurations marked in bold:</p>
+                    <pre>
+apiVersion: kubeadm.k8s.io/v1beta2
+caCertPath: /etc/kubernetes/pki/ca.crt
+discovery:
+  bootstrapToken:
+    <b>apiServerEndpoint: cluster-endpoint:6443</b>
+    <b>token: [token]</b>
+    <b>caCertHashes:
+    - [discovery-token-ca-cert-hash]</b>
+  timeout: 5m0s
+  <b>tlsBootstrapToken: [token]</b>
+kind: JoinConfiguration
+nodeRegistration:
+  <b>criSocket: /run/containerd/containerd.sock</b>
+  <b>name: [worker server’s hostname]</b>
+<b>---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd</b>
+                    </pre>
+
+                    <p>In the YAML above, all available fields for the kind "JoinConfiguration" are available:
+                        <a target="_blank" href="https://pkg.go.dev/k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm/v1beta2#JoinConfiguration">
+                            here</a>
+                    </p>
+
+                    <p>
+                        <u>Optional</u>: as for the control-plane, if you would like to pass runtime arguments to the worker "kubelet",
+                        in the YAML above you could add the field "kubeletExtraArgs" under the field "nodeRegistration".
+                        For example, if you want to specify an IP address that Kubelet should assign to a node in the cluster:
+                    </p>
+                    <pre>
+nodeRegistration:
+  ...
+  <b>kubeletExtraArgs:
+    node-ip: [worker server’s IP]</b>
+   ...
+                    </pre>
+                    <p>Join the cluster:</p>
+                    <pre>
+sudo kubeadm join --config=join-conf.yaml
+                    </pre>
+
+                    <p>From the control plane, check that the worker node is ready:</p>
+                    <pre>
+kubectl get nodes -o wide
+                    </pre>
+
+                    <p>
+                        If we need to add additional worker nodes, repeat the instructions above on different bare metal server(s).
+                    </p>
+
+
+                    <h1>Join the cluster as an additional Control-plane node</h1>
+
+                    <p>These instructions are run on the server which will host the additional Control-plane.</p>
+                    <p>
+                        The instructions to add a Control-plane to the cluster are similar to the ones for adding a worker.
+                        With few differences.
+                    </p>
+                    <p>
+                        We are going to use the same configuration than when adding a worker node, except an additional
+                        "controlPlane" field, as shown in bold below:
+                    </p>
+                    <pre>
+apiVersion: kubeadm.k8s.io/v1beta2
+caCertPath: /etc/kubernetes/pki/ca.crt
+<b>controlPlane:
+  localAPIEndpoint:
+    advertiseAddress: [server’s IP]  # the IP address of the additional control plane server</b>
+discovery:
+  bootstrapToken:
+    apiServerEndpoint: cluster-endpoint:6443
+    token: [token]
+    caCertHashes:
+    - [discovery-token-ca-cert-hash]
+  timeout: 5m0s
+  tlsBootstrapToken: [token]
+kind: JoinConfiguration
+nodeRegistration:
+  criSocket: /run/containerd/containerd.sock
+  name: [worker server’s hostname]
+  kubeletExtraArgs:
+    node-ip: [worker’s IP]
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+                    </pre>
+
+                    <p>Join the cluster:</p>
+                    <pre>
+kubeadm join <b>--control-plane</b> --config="join-conf.yaml"
+                    </pre>
+
+                    <p>From the main control plane, check that the new control plane node is ready:</p>
+                    <pre>
+kubectl get nodes -o wide
+                    </pre>
+
+
+
+                    <h1>Next steps</h1>
+
+                    <h2>Keep securing</h2>
+                    <p>Follow the next step in the <a href="/blog/guide-secure-bare-metal-servers-and-install-kubernetes.html">Guide to create a secure cluster of bare-metal servers and install Kubernetes</a>.</p>
+
+                    <h2>Controlling the cluster from a local computer</h2>
+                    <p>You can control a Kubernetes cluster from your local computer as if you were located on the main
+                    control-plane server.</p>
+                    <p>From the local computer, copy admin.conf in your home folder:</p>
+                    <pre>
+scp root@&lt;control-plane-host&gt;:/etc/kubernetes/admin.conf .
+                    </pre>
+
+                    <p>Now, we can run "kubeclt" command from the local computer:</p>
+                    <pre>
+kubectl --kubeconfig ./admin.conf get nodes
+                    </pre>
+                    <p>
+                        Note: the admin.conf file gives the user superuser privileges over the cluster. This file should
+                        be used sparingly.
+                    </p>
+
+
+                    <h1>Additional readings</h1>
+                    <p>
+                        <a target="_blank" href="https://metal.equinix.com/solutions/kubernetes/">List of alternatives
+                        Kubernetes installers</a> (see section "Partners and Distributions")
+                    </p>
+                    <p>
+                        <a target="_blank" href="https://kubernetes.io/docs/setup/production-environment/">Official
+                            Kubernetes installation instructions</a>
+                    </p>
+                    <p>
+                        <a target="_blank" href="https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/">
+                            Kubernetes official doc: Install "kubedamn"</a>
+                    </p>
+                    <p>
+                        <a target="_blank" href="https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/create-cluster-kubeadm/">
+                            Kubernetes official doc: Creating a cluster with "kubedamn"</a>
+                    </p>
+                    <p>
+                        <a target="_blank" href="https://kubernetes.io/docs/setup/production-environment/container-runtimes/#containerd">
+                            Kubernetes official doc: Install ContainerD</a>
+                    </p>
+                    <p>
+                        <a target="_blank" href="https://docs.docker.com/engine/install/ubuntu/">
+                            Docker official doc: Set-up Docker certs and repo for Ubuntu</a>
+                    </p>
+                    <p>
+                        <a target="_blank" href="https://docs.docker.com/engine/install/debian/">
+                            Docker official doc: Set-up Docker certs and repo for Debian</a>
+                    </p>
+                    <p>
+                        <a target="_blank" href="https://docs.projectcalico.org/getting-started/kubernetes/quickstart">
+                            Calico official doc: Quick start with Kubernetes</a>
+                    </p>
+
+                </article>
+
+            </div>
+        </div>

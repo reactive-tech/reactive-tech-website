@@ -1,0 +1,278 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Useful Linux commands</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2020-04-16" pubdate="pubdate">16 April 2020</time> by Alex Arica</div>
+
+                    <h2>User</h2>
+
+                    <p>Add a new user:</p>
+                    <pre>
+adduser [username]
+                    </pre>
+
+                    <p>Add a user to a new group:</p>
+                    <pre>
+sudo usermod -aG [groupname] [username]
+                    </pre>
+
+                    <p>Add user to sudo group:</p>
+                    <pre>
+sudo usermod -aG sudo alex
+                    </pre>
+
+                    <p>Display groups that a user belongs to:</p>
+                    <pre>
+groups [username]
+                    </pre>
+
+                    <h2>Bash history</h2>
+
+                    <p>The bash history is kept in the file:</p>
+                    <pre>
+~/.bash_history
+                    </pre>
+
+
+                    <p>Display full history:</p>
+                    <pre>
+history
+                    </pre>
+
+                    <p>Delete full history:</p>
+                    <pre>
+history -c
+                    </pre>
+
+                    <p>Disable current user's bash history:</p>
+                    <pre>
+echo "HISTFILESIZE=0" >> ~/.bashrc
+source ~/.bashrc
+history -c
+                    </pre>
+
+                    <h2>Package manager "apt"</h2>
+
+                    <p>Update packages:</p>
+                    <pre>
+apt-get update
+                    </pre>
+
+                    <p>Upgrade distro:</p>
+                    <pre>
+apt-get dist-upgrade
+                    </pre>
+
+                    <p>Uninstall packages which were installed by other packages which were since removed:</p>
+                    <pre>
+apt autoremove
+                    </pre>
+
+                    <p>Uninstall a package with all its files:</p>
+                    <pre>
+sudo apt --purge remove snapd
+                    </pre>
+
+                    <p>Debian repository configuration file:</p>
+                    <pre>
+cat /etc/apt/sources.list
+                    </pre>
+
+                    <h2>SystemD</h2>
+
+                    <p>Check the logs of a process run by systemd</p>
+                    <pre>
+# for example for kubelet:
+systemctl status kubelet
+journalctl -xeu kubelet
+                    </pre>
+
+                    <p>By default when we start a service in SystemD, it does not persist on reboot:</p>
+                    <pre>
+sudo systemctl start nginx
+                    </pre>
+
+                    <p>We need to enable it so that it is automatically started on reboot:</p>
+                    <pre>
+sudo systemctl enable nginx
+                    </pre>
+
+                    <p>The systemd programs are located in:</p>
+                    <pre>
+/etc/systemd/system/[program]
+                    </pre>
+
+                    <h2>Tar gz</h2>
+
+                    <p>Compress:</p>
+                    <pre>
+tar -czvf name-of-archive.tar.gz /path/to/directory-or-file
+                    </pre>
+
+                    <p>Uncompress:</p>
+                    <pre>
+tar -xzvf archive.tar.gz -C /tmp
+                    </pre>
+
+                    <h2>Find files</h2>
+
+                    <p>Find a file by name:</p>
+                    <pre>
+find -L . -name '*.java'
+                    </pre>
+
+                    <p>Find Files with text:</p>
+                    <pre>
+grep -Ril "POSTGRES_MYAPP_PASSWORD" /
+                    </pre>
+                    <p>The option -L forces through symlinks.</p>
+
+
+                    <h2>Stream</h2>
+
+                    <p>Stream file:</p>
+                    <pre>
+tail -f [file path]
+                    </pre>
+
+                    <p>Tail the output of the command "ls":</p>
+                    <pre>
+ls -t /etc | tail -n 5
+                    </pre>
+
+                    <h2>Append contents to a file</h2>
+
+                    <p>Write multi-lines contents to a file:</p>
+                    <pre>
+cat &lt;&lt;EOF | sudo tee myfile.yaml
+a configuration
+with
+many
+lines
+EOF
+                    </pre>
+                    <p>Above "sudo" is only required if the access to file is restricted for current user.</p>
+
+                    <p>Write a single line content to a file:</p>
+                    <pre>
+echo "some contents" | sudo tee -a /etc/file.conf
+                    </pre>
+
+                    <p>Another way to write a single line content to a file:</p>
+                    <pre>
+echo "some contents" >> /etc/file.conf
+                    </pre>
+
+                    <p>Note that you cannot use "sudo" with the command above. To do so, run:</p>
+                    <pre>
+sudo -- bash -c 'echo "some contents" >> /etc/file.conf'
+                    </pre>
+
+                    <p>Write the list of files' names located in a folder to a file:</p>
+                    <pre>
+ls -al ~ | sudo tee mylist.txt
+                    </pre>
+                    <pre>
+ls -al ~ >> files.txt
+                    </pre>
+
+                    <p>Good articles on this topic:</p>
+                    <p>
+                        <a target="_blank" href="https://www.cyberciti.biz/faq/linux-append-text-to-end-of-file/">
+                        https://www.cyberciti.biz/faq/linux-append-text-to-end-of-file/</a>
+                        <br/>
+                        <a target="_blank" href="https://linuxize.com/post/bash-append-to-file/">
+                            https://linuxize.com/post/bash-append-to-file/</a>
+                    </p>
+
+                    <h2>Disk details</h2>
+
+                    <p>List the partitions and the space that they occupy on disk:</p>
+                    <pre>
+df -h
+                    </pre>
+
+                    <p>List the biggest directories & files:</p>
+                    <pre>
+sudo du -a / | sort -n -r | head -n 10
+                    </pre>
+
+                    <p>List the biggest files:</p>
+                    <pre>
+sudo find / -type f -exec du -Sh {} + | sort -rh | head -n 5
+                    </pre>
+
+
+                    <h2>Kernel modules</h2>
+                    <p>Linux's kernel has a list of modules that can be enabled and disabled.</p>
+
+                    <p>List all enabled modules:</p>
+                    <pre>
+lsmod
+                    </pre>
+
+                    <p>Search if a module is enabled (e.g. "overlay"):</p>
+                    <pre>
+lsmod | grep overlay
+                    </pre>
+
+                    <p>Enable a module:</p>
+                    <pre>
+sudo modprobe overlay
+                    </pre>
+
+                    <p>
+                        The above command does not ensure that a module would be enabled on reboot.
+                        To do so, you can create a configuration file in the folder "/etc/modules-load.d/".
+                        For example, let's enable the module "overlay" for "kubernetes":
+                    </p>
+                    <pre>
+cat &lt;&lt;EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+EOF
+                    </pre>
+
+                    <p>You can also achieve the above from the common module file "/etc/modules":</p>
+                    <pre>
+sudo -- bash -c 'echo "overlay" >> /etc/modules'
+                    </pre>
+
+
+                    <h2>System configuration</h2>
+                    <p>Linux's kernel has a list of system configurations that can be enabled and disabled.</p>
+
+                    <p>List all system conf:</p>
+                    <pre>
+sysctl -a
+                    </pre>
+
+                    <p>Search if a system conf is enabled (e.g. "net.ipv4.ip_forward"):</p>
+                    <pre>
+sudo sysctl net.ipv4.ip_forward
+                    </pre>
+                    <p>
+                        The output "net.ipv4.ip_forward = 0" means disabled. And "net.ipv4.ip_forward = 1" means enabled.
+                    </p>
+
+                    <p>
+                        To enable a system configuration and persist it on reboot, you can create a configuration file
+                        in the folder "/etc/sysctl.d/". For example, let's enable the conf "net.ipv4.ip_forward" for "kubernetes":
+                    </p>
+                    <pre>
+cat &lt;&lt;EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.ipv4.ip_forward = 1
+EOF
+                    </pre>
+                    <p>Apply the changes without having to reboot:</p>
+                    <pre>
+sudo sysctl --system
+                    </pre>
+
+                </article>
+
+            </div>
+        </div>

@@ -1,0 +1,169 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Encrypt Etcd database in Kubernetes</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2021-01-23" pubdate="pubdate">23 January 2021</time> by Alex Arica</div>
+
+                    <p>In this article, we are going to encrypt the Etcd database with a locally managed key.</p>
+                    <p>It is very important to encrypt Etcd since all data including secrets of your Kubernetes cluster
+                        are stored by Etcd. Not encrypting Etcd database adds the risk of exposing Kubernetes secrets in the
+                        eventuality of it being accessed or stolen by an attacker.</p>
+                    <p>
+                    <p>By default, Kubernetes does not encrypt its Etcd database...</p>
+
+                    <h2>Declare a secret configuration file in "kube-apiserver"</h2>
+                    <p>Create a unique key and copy it:</p>
+                    <pre>
+head -c 32 /dev/urandom | base64
+                    </pre>
+
+                    <p>Create a configuration file with the secret key:</p>
+                    <pre>
+sudo vi /etc/kubernetes/pki/etcd-encryption.yaml
+                    </pre>
+                    <p>Contents to add:</p>
+                    <pre>
+apiVersion: apiserver.config.k8s.io/v1
+kind: EncryptionConfiguration
+resources:
+  - resources:
+    - secrets
+    providers:
+    - aescbc:
+        keys:
+        - name: key1
+          secret: [Created base64 unique key with /dev/urandom]
+    - identity: {}
+                    </pre>
+
+                    <p>Once saved, only allow root user to read it. This way if there is a host compromise, a non root attacker cannot read it:</p>
+                    <pre>
+sudo chmod 600 /etc/kubernetes/pki/etcd-encryption.yaml
+                    </pre>
+
+                    <p>Declare that configuration file in kube-apiserver's config file:</p>
+                    <pre>
+sudo vi /etc/kubernetes/manifests/kube-apiserver.yaml
+                    </pre>
+
+                    <p>Inside this file, add the following as the last option under the field "command:":</p>
+                    <pre>
+- --encryption-provider-config=/etc/kubernetes/pki/etcd-encryption.yaml
+                    </pre>
+
+                    <p>For example:</p>
+                    <pre>
+spec:
+  containers:
+  - command:
+    - kube-apiserver
+    - --advertise-address=...
+    ...
+    - --tls-private-key-file=/etc/kubernetes/pki/apiserver.key
+    <b>- --encryption-provider-config=/etc/kubernetes/pki/etcd-encryption.yaml</b>
+    image: k8s.gcr.io/kube-apiserver:v1.20.5
+                    </pre>
+
+                    <p>Wait for "kube-apiserver" to restart. No need to restart it manually, it should pick up the new configuration automatically.
+                        Check with the command below, the AGE column which should show a recent age for that container:</p>
+                    <pre>
+kubectl get pods -n kube-system | grep kube-apiserver
+                    </pre>
+
+                    <p>The configuration file that we have created is saved in the folder “/etc/kubernetes/pki” because
+                        "kube-apiserver" is a container in Kubernetes which mounts specific folders (see below) and
+                        therefore, it can only access files inside those folders.
+                        <br/>See below the list of mounted folders from kube-apiserver's config file "/etc/kubernetes/manifests/kube-apiserver.yaml":
+                    </p>
+                    <pre>
+    volumeMounts:
+    - mountPath: /etc/kubernetes/pki
+      name: k8s-certs
+      readOnly: true
+    - mountPath: /etc/ssl/certs
+      name: ca-certs
+      readOnly: true
+    - mountPath: /etc/ca-certificates
+      name: etc-ca-certificates
+      readOnly: true
+    - mountPath: /usr/local/share/ca-certificates
+      name: usr-local-share-ca-certificates
+      readOnly: true
+    - mountPath: /usr/share/ca-certificates
+      name: usr-share-ca-certificates
+      readOnly: true
+                    </pre>
+
+
+                    <h2>Encrypt all existing secrets in Kubernetes</h2>
+
+                    <p>The command below reads all secrets in Kubernetes and updates them to apply server our new encryption configuration:</p>
+                    <pre>
+kubectl get secrets --all-namespaces -o json | kubectl replace -f -
+                    </pre>
+                    <p>From that point, all secrets in Kubernetes are encrypted.</p>
+
+                    <h2>Test new secrets will be encrypted</h2>
+
+                    <p>Create a new secret:</p>
+                    <pre>
+kubectl create secret generic secret1 -n default --from-literal=mykey=mysecretdata
+                    </pre>
+
+                    <p>
+                        We will check the created secret data by directly accessing Etcd database. Run the commands below:
+                    </p>
+                    <pre>
+sudo apt-get install etcd-client
+
+sudo ETCDCTL_API=3 etcdctl --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key get /registry/secrets/default/secret1
+                    </pre>
+                    <p>
+                        Verify that the output shows the stored secret with prefix "<b>k8s:enc:aescbc:v1:</b>". That
+                        confirms "aescbc" provider has encrypted the resulting data
+                    </p>
+
+                    <p>Example output:</p>
+                    <pre>
+<b>k8s:enc:aescbc:v1:key1:</b>%8p6dQfa8HZe_u...>
+                    </pre>
+
+                    <p>Verify the secret is correctly decrypted when retrieved via the Kubernetes API. The below command
+                        should output: "mysecretdata":</p>
+                    <pre>
+kubectl get secret secret1 -o jsonpath="{.data.mykey}" | base64 --decode
+                    </pre>
+
+                    <p>Remove the secret:</p>
+                    <pre>
+kubectl delete secret secret1
+                    </pre>
+
+                    <p>We successfully checked that Etcd encrypts its database.</p>
+
+                    <h2>Few notes</h2>
+
+                    <p>Locally managed key does not protect about a host comprising with root access.
+                        However, it is a better approach than the default settings of Kubernetes which does not encrypt Etcd database.
+                        Ideally we would like to use a KMS provider.</p>
+                    <p>Kubernetes official recommendations:
+                        <br/>"Encrypting secrets with a locally managed key protects against an etcd compromise,
+                        but it fails to protect against a host compromise. Since the encryption keys are stored on the
+                        host in the EncryptionConfig YAML file, a skilled attacker can access that file and extract the
+                        encryption keys. Therefore, Storing the raw encryption key in the EncryptionConfig only moderately
+                        improves your security posture, compared to no encryption. Please use a KMS provider for additional security."
+                    </p>
+                    <p><a target="_blank" href="https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/">Kubernetes doc about encryption with key stored locally</a></p>
+                    <p><a target="_blank" href="https://kubernetes.io/docs/tasks/administer-cluster/kms-provider/">Kubernetes doc about encryption with key stored by a KMS provider</a></p>
+
+                    <h2>KMS providers</h2>
+                    <p><a target="_blank" href="https://www.equinix.co.uk/resources/videos/smartkey/">Equinix Smart Key Service</a></p>
+                    <p><a target="_blank" href="https://www.hashicorp.com/products/vault/">Hasicorp Vault</a></p>
+                </article>
+
+            </div>
+        </div>

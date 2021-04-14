@@ -1,0 +1,355 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Secure servers behind a private network</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2020-10-12" pubdate="pubdate">12 October 2020</time> by Alex Arica</div>
+
+                    <p>
+                        We are going to secure our servers by hiding them behind a private network. Among all servers inside
+                        the private network, only one server will be accessible from internet via SSH. And that server will
+                        be the "Bastion server", meaning it will allow admins to "SSH jump" to private servers.
+                    </p>
+                    <p>
+                        The advantage of this approach is, it allows hiding the servers and services (e.g. HTTP Apache
+                        server, PostgreSql database, ...) inside a private network. From outside, meaning using a public
+                        IP address, it would not be possible to access to those services nor to scan them. This architecture
+                        significantly limits the attack surface by only exposing the Bastion server and the external
+                        load-balancer to the Internet.
+                    </p>
+
+                    <p>
+                        The flow to access to a private server via SSH:
+                    </p>
+                    <pre>
+Admin on internet -> via SSH -> Bastion server -> SSH jump to -> private server(s)
+                    </pre>
+
+                    <p>
+                        The flow to access to a HTTP service (e.g. Nginx) exposed by private server(s):
+                    </p>
+                    <pre>
+Client on internet -> via HTTPS -> External load-balancer -> HTTPS -> Nginx on private server(s)
+                    </pre>
+                    <p>
+                        In the flow above, we assumed that the external load-balancer is accessible publicly and has access to the private network.
+                        Many hosting companies offer a private network service. For example, OVH offers a "vRack" private network
+                        which is accessible via their load-balancers.
+                    </p>
+
+                    <h2>Let's set-up this architecture</h2>
+                    <p>
+                        Let's assume that we have 2 servers: a private server and a public server. They have 2 network
+                        interfaces each, as follows:
+                        <ul>
+                            <li>interface eth0: public IP, assigned by the hosting company</li>
+                            <li>interface eth1: private IP, manually assigned with range 192.168.0.0/16</li>
+                        </ul>
+                    </p>
+
+                    <p>
+                        At this stage, both servers are publicly accessible. We would like to make changes so that they
+                        have the following characteristics:
+                        <ul>
+                            <li>
+                                Private server: its network interface eth0 is disabled. It has no public IP and consequently
+                                it is not possible to directly access to this server via the internet. It has the network
+                                interface eth1 enabled with a static private IP address 192.168.0.2 and a gateway IP 192.168.0.1 .
+                            </li>
+                            <li>
+                                Public server: it is a Bastion server and also a Gateway server. Both of its interfaces
+                                eth0 and eth1 are enabled. It has a public IP via eth0 and a static private IP 192.168.0.1 via eth1.
+                                As a Bastion server it allows admins to access the Private server (192.168.0.2) via a "SSH jump".
+                                As a Gateway server with IP 192.168.0.1, it allows the Private server to access to the internet.
+                            </li>
+                        </ul>
+                    </p>
+
+                    <p>Both servers are shipped with a SSHD service listening to port 22.</p>
+
+                    <h2>Configure the Public server as a Bastion server</h2>
+                    <p>
+                        Check the Bastion server has SSHD running and listening on port 22.
+                    </p>
+
+                    <h2>Configure the Public server as a Gateway server</h2>
+
+                    <p>
+                        We are going to assign the static IP address 192.168.0.1 to the public server. Later, this IP address
+                        will be used by the private server as the gateway IP address.
+                    </p>
+
+                    <h3>On Ubuntu</h3>
+
+                    <p>Create this file:</p>
+                    <pre>
+sudo vi /etc/netplan/60-static.yaml
+                    </pre>
+
+                    <p>Add the followings:</p>
+                    <pre>
+network:
+  version: 2
+  ethernets:
+    eth1:
+       dhcp4: no
+       addresses:
+          - 192.168.0.1/16
+                    </pre>
+
+                    <p>Save the file and apply the changes:</p>
+                    <pre>
+sudo netplan apply
+                    </pre>
+
+                    <h3>On Debian</h3>
+
+                    <p>Open this file:</p>
+                    <pre>
+sudo vi /etc/network/interfaces
+                    </pre>
+
+                    <p>Add the followings:</p>
+                    <pre>
+auto eth1
+iface eth1 inet static
+address 192.168.0.1
+netmask 255.255.0.0
+                    </pre>
+
+                    <p>Save the file and apply the changes:</p>
+                    <pre>
+sudo systemctl restart networking
+                    </pre>
+
+                    <h3>Test the changes</h3>
+
+                    <p>Check Ip address</p>
+                    <pre>
+ip a
+                    </pre>
+
+                    <p>We should see the interface eth1 with the IP 192.168.0.1</p>
+                    <p>Reboot the server to make sure that the IP address remains the same:</p>
+                    <pre>
+sudo reboot
+                    </pre>
+
+                    <p>After reboot, connect to the server and check the private IP address works:</p>
+                    <pre>
+ping 192.168.0.1
+                    </pre>
+
+
+                    <h3>Enable IP forwarding</h3>
+
+                    <p>Check if it is already enabled</p>
+                    <pre>
+sudo sysctl net.ipv4.ip_forward
+                    </pre>
+
+                    <p>If the output is "0" then we need to enable it. Open the file:</p>
+                    <pre>
+sudo vi /etc/sysctl.conf
+                    </pre>
+
+                    <p>Uncomment the following line to enable packet forwarding for IPv4:</p>
+                    <pre>
+net.ipv4.ip_forward=1
+                    </pre>
+
+                    <p>Save the file and apply the changes:</p>
+                    <pre>
+sudo sysctl -p
+                    </pre>
+
+                    <p>Check if it is enabled, the output should be "1":</p>
+                    <pre>
+sysctl net.ipv4.ip_forward
+                    </pre>
+
+                    <h3>Set-up a NAT rule</h3>
+
+                    <p>Set-up a NAT (network-address-translation) to give private network access to the internet.</p>
+                    <p>If a private IP is statically set, please use SNAT (this is our case):</p>
+                    <pre>
+sudo iptables -t nat -A POSTROUTING ! -d 192.168.0.0/16 -o eth0 -j SNAT --to-source [replace this by the public IP address of eth0]
+                    </pre>
+
+                    <p>For example:</p>
+                    <pre>
+sudo iptables -t nat -A POSTROUTING ! -d 192.168.0.0/16 -o eth0 -j SNAT --to-source 145.239.7.56
+                    </pre>
+
+                    <p>Enable forwarding:</p>
+                    <pre>
+sudo iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT
+                    </pre>
+
+                    <p>Persist the new IP rules:</p>
+                    <pre>
+su -
+iptables-save > /etc/iptables/rules.v4
+                    </pre>
+
+
+                    <h2>Configure the private server</h2>
+                    <p>We are going to configure the private server with a static IP address 192.168.0.2 .</p>
+
+
+                    <h3>On Ubuntu</h3>
+
+                    <p>Create this file:</p>
+                    <pre>
+sudo vi /etc/netplan/60-static.yaml
+                    </pre>
+
+                    <p>Add the followings:</p>
+                    <pre>
+network:
+  version: 2
+  ethernets:
+    eth1:
+      dhcp4: no
+      addresses:
+      - 192.168.0.2/16
+      gateway4: 192.168.0.1
+                    </pre>
+
+                    <p>Save the file and apply the changes:</p>
+                    <pre>
+sudo netplan apply
+                    </pre>
+
+                    <p>
+                        At this stage, on Ubuntu you would be disconnected from the server because the private IP comes
+                        before the public IP in IP routes. You can reconnect to the server by "SSH jump", as follows:
+                    </p>
+                    <pre>
+ssh -J alex@[Bastion public IP] alex@192.168.0.2
+                    </pre>
+
+                    <h3>On Debian</h3>
+
+                    <p>Open this file:</p>
+                    <pre>
+sudo vi /etc/network/interfaces
+                    </pre>
+
+                    <p>Add the followings:</p>
+                    <pre>
+auto eth1
+iface eth1 inet static
+address 192.168.0.2
+netmask 255.255.0.0
+gateway 192.168.0.1
+                    </pre>
+
+                    <p>Save the file and apply the changes:</p>
+                    <pre>
+sudo systemctl restart networking
+                    </pre>
+
+                    <h3>Test the changes</h3>
+
+                    <p>Check Ip address</p>
+                    <pre>
+ip a
+                    </pre>
+
+                    <p>We should see the interface eth1 with the IP 192.168.0.2 .</p>
+
+                    <p>Check that the gateway 192.168.0.1 is present in the routing table:</p>
+                    <pre>
+ip route
+                    </pre>
+
+                    <p>We should see something similar to:</p>
+                    <pre>
+default via 192.168.0.1 dev eth1 ...
+                    </pre>
+
+                    <p>If we do not see the gateway 192.168.0.1 in the routing table, then add it manually:</p>
+                    <pre>
+ip route add default via 192.168.0.1 dev eth1
+                    </pre>
+
+                    <h3>Connect to the private server via SSH</h3>
+                    <p>We are going to ssh jump from the Gateway server to the Private server. From a client computer
+                    (a laptop or desktop computer), connect via SSH as follows:</p>
+                    <pre>
+ssh -J [username]@[Bastion server's IP address] [username]@[private server IP]
+                    </pre>
+                    <p>For example:</p>
+                    <pre>
+ssh -J alex@145.239.7.56 alex@192.168.0.2
+                    </pre>
+                    <p>If the above works, the Bastion server is ready.</p>
+
+                    <h3>Disable the public interface eth0 on private server</h3>
+                    <p>
+                        Now that we can SSH jump to the Private server, it is time to isolate it from the internet.
+                        Let's disable the interface eth0 managing a public IP:
+                    </p>
+                    <pre>
+sudo ip link set eth0 down
+                    </pre>
+
+                    <p>Test:</p>
+                    <pre>
+ip a
+                    </pre>
+                    <p>The interface eth0 should not have an IP address. Only the interface eth1 should have one: 192.168.0.2</p>
+
+                    <p>Check default gateway routing:</p>
+                    <pre>
+ip route
+                    </pre>
+                    <p>We should not see the interface eth0 in the routing table.</p>
+
+                    <p>Ping:</p>
+                    <pre>
+ping 192.168.0.1
+ping reactive-tech.io
+                    </pre>
+
+                    <p>
+                        The set-up is completed. To add more servers into the private network, follow the steps in section
+                        "Configure the private server" by incrementing the private IP address in 192.168.0.[to increment].
+                    </p>
+
+                    <h2>Additional actions and readings</h2>
+
+                    <h3>On Bastion, configure a firewall to only allow SSH access</h3>
+                    <p>
+                        You can create firewall rules on Bastion server, using iptables in order to limit external
+                        connections to SSH port only. Please follow the instructions
+                        <a target="_blank" href="/blog/configure-firewall-only-allow-ssh-access.html">here</a>.
+                    </p>
+
+                    <h3>Few notes about SNAT and MASQUERADE.</h3>
+
+                    <p>If a private IP is dynamically set by a DHCP, please use MASQUERADE rather than SNAT:</p>
+                    <pre>
+sudo iptables -t nat -A POSTROUTING ! -d 192.168.0.0/16 -o eth0 -j MASQUERADE
+                    </pre>
+
+                    <p>For static IPs, SNAT is recommended by the iptables man page:</p>
+                    <p>
+                        “This target is only valid in the nat table, in the POSTROUTING chain. It should only be used with
+                        dynamically assigned IP (dialup) connections: if you have a static IP address, you should use the
+                        SNAT target. Masquerading is equivalent to specifying a mapping to the IP address of the interface
+                        the packet is going out, but also has the effect that connections are forgotten when the interface
+                        goes down. This is the correct behavior when the next dialup is unlikely to have the same interface
+                        address (and hence any established connections are lost anyway).”
+                    </p>
+                    <p><a target="_blank" href="http://lists.debian.org/debian-firewall/2002/02/msg00020.html "> Additional
+                        discussions on the Web on this topic</a>.</p>
+
+                </article>
+
+            </div>
+        </div>

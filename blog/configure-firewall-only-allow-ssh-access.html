@@ -1,0 +1,196 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Configure a firewall to only allow SSH access</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2020-08-08" pubdate="pubdate">8 August 2020</time> by Alex Arica</div>
+
+                    <p>We are going to create firewall rules using iptables and only allow connections via SSH on port 22.</p>
+                    <p>
+                        We assume that we have a server with a network interface “etho” which has a Public IP address
+                        exposing the server to the internet. The interface “etho” will only allow SSH connections and nothing else.</p>
+                    <p>
+                        Using the command "ip a" select the network interface that you want to use and replace "eth0" in
+                        the commands below by your interface's name.
+                    </p>
+
+                    <h2>Configure the firewall</h2>
+
+                    <p>Check the current iptable rules:</p>
+                    <pre>
+sudo iptables -L -v
+sudo ip6tables -L -v
+                    </pre>
+
+                    <p>Let’s back-up the existing rules in case of we have to roll back our changes:</p>
+                    <pre>
+sudo iptables-save > rules.v4.backup
+sudo ip6tables-save > rules.v6.backup
+                    </pre>
+
+                    <p>First, we define the default policy rules:</p>
+                    <pre>
+sudo iptables -P INPUT ACCEPT
+sudo ip6tables -P INPUT ACCEPT
+sudo iptables -P OUTPUT ACCEPT
+sudo ip6tables -P OUTPUT ACCEPT
+sudo iptables -P FORWARD ACCEPT
+sudo ip6tables -P FORWARD ACCEPT
+                    </pre>
+
+                    <p>Then, delete all existing non default rules:</p>
+                    <pre>
+sudo iptables -F
+sudo ip6tables -F
+                    </pre>
+
+                    <p>We accept already established connections for interface "etho":</p>
+                    <pre>
+sudo iptables -A INPUT -i etho -m state --state ESTABLISHED,RELATED -j ACCEPT
+sudo ip6tables -A INPUT -i etho -m state --state ESTABLISHED,RELATED -j ACCEPT
+                    </pre>
+
+                    <p>We accept ssh connections for interface "etho":</p>
+                    <pre>
+sudo iptables -A INPUT -i etho -p tcp --dport 22 -j ACCEPT
+sudo ip6tables -A INPUT -i etho -p tcp --dport 22 -j ACCEPT
+                    </pre>
+
+                    <p>Finally, we drop anythink else on interface "etho":</p>
+                    <pre>
+sudo iptables -A INPUT -i etho -j DROP
+sudo ip6tables -A INPUT -i etho -j DROP
+sudo iptables -A FORWARD -i etho -j DROP
+sudo ip6tables -A FORWARD -i etho -j DROP
+
+                    </pre>
+
+                    <p>Save the changes:</p>
+                    <pre>
+sudo iptables-save
+sudo ip6tables-save
+                    </pre>
+
+                    <h2>Persist the changes on reboot</h2>
+                    <p>
+                        By default, the changes made to the Firewall using iptables are not persisted and would be lost on reboot.
+                        The package “iptables-persistent” allows to persist the iptables rules.
+                    </p>
+
+                    <p>Install "iptables-persistent":</p>
+                    <pre>
+sudo aptitude install iptables-persistent
+                    </pre>
+
+                    <p>
+                        During the installation, the initial setup will ask to save the rules for IPv4 and IPv6, just select “Yes”
+                        and press enter for both. The rules are saved in the file “/etc/iptables/rules.v4” for IPv4
+                        and “/etc/iptables/rules.v6” for IPv6.
+                    </p>
+
+                    <p>Check the iptables rules are saved by "iptables-persistent":</p>
+                    <pre>
+cat /etc/iptables/rules.v4
+cat /etc/iptables/rules.v6
+                    </pre>
+
+                    <p>
+                        “Iptables-persistent” is a service which starts automatically on each reboot and loads the
+                        iptables rules from the folder “/etc/iptables/”.
+                    </p>
+
+                    <p>Check the service is running:</p>
+                    <pre>
+sudo systemctl list-unit-files --state=enabled | grep netfilter-persistent.service
+                    </pre>
+
+                    <p>Manually reboot the server :</p>
+                    <pre>
+sudo reboot
+                    </pre>
+
+                    <p>After reboot, connect to the server and check that the current iptable rules are the ones that were persisted:</p>
+                    <pre>
+sudo iptables -L -v
+sudo ip6tables -L -v
+                    </pre>
+
+                    <p>From your local computer, check that only port 22 is opened from outside by using the command "nmap":</p>
+                    <pre>
+sudo nmap -Pn [server's public IP]
+Starting Nmap 7.80 ( https://nmap.org ) at 2021-04-05 15:55 BST
+Nmap scan report for [server's hostname] ([server's public IP])
+Host is up (0.026s latency).
+<b>Not shown: 999 filtered ports
+PORT   STATE SERVICE
+22/tcp open  ssh</b>
+
+Nmap done: 1 IP address (1 host up) scanned in 8.66 seconds
+                    </pre>
+
+                    <p>The firewall rules are ready.</p>
+
+                    <h2>Considerations for future changes to iptables rules</h2>
+                    <p>
+                        On reboot, “iptables-persistent” read the firewall rules from the folder “/etc/iptables/”. And each
+                        time we make changes using the commands "iptables" and "ip6tables", we need to make sure that
+                        those changes are persisted for next reboots by updating the files in the folder “/etc/iptables”.
+                    </p>
+                    <p>
+                        Once we made the changes, we are going to use the commands "iptables-save" and "ip6tables-save"
+                        in order to persist those changes.
+                    </p>
+                    <p>
+                        First, we become root so that the files have specific linux permissions when persisted:
+                    </p>
+                    <pre>
+su -
+                    </pre>
+
+                    <p>Persist the firewall rules:</p>
+                    <pre>
+iptables-save > /etc/iptables/rules.v4
+ip6tables-save > /etc/iptables/rules.v6
+                    </pre>
+
+                    <p>Exit from root:</p>
+                    <pre>
+exit
+                    </pre>
+                    <p>The changes are persisted.</p>
+
+                    <h2>Additional useful commands</h2>
+
+                    <p>Restores backed-up iptables rules:</p>
+                    <pre>
+sudo iptables-restore < [path to the backed-up v4 file]
+sudo ip6tables-restore < [path to the backed-up v6 file]
+                    </pre>
+
+                    <p>Delete all custom user-defined iptables rules so that only the default policy rule will be used:</p>
+                    <pre>
+sudo iptables -X
+sudo ip6tables -X
+                    </pre>
+
+                    <h2>Additional readings about iptables</h2>
+                    <p>
+                        <a target="_blank" href="https://serverfault.com/questions/244767/enable-iptables-on-one-interface">
+                            https://serverfault.com/questions/244767/enable-iptables-on-one-interface</a>
+                    </p>
+                    <p>
+                        <a target="_blank" href="https://www.hostinger.com/tutorials/iptables-tutorial ">
+                            https://www.hostinger.com/tutorials/iptables-tutorial</a>
+                    </p>
+                    <p>
+                        <a target="_blank" href="https://www.thomas-krenn.com/en/wiki/Saving_Iptables_Firewall_Rules_Permanently">
+                            https://www.thomas-krenn.com/en/wiki/Saving_Iptables_Firewall_Rules_Permanently</a>
+                    </p>
+
+                </article>
+
+            </div>
+        </div>

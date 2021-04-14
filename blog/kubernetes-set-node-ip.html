@@ -1,0 +1,54 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Kubernetes set a custom node-ip</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2020-06-21" pubdate="pubdate">21 June 2020</time> by Alex Arica</div>
+
+                    <p>By default, Kubernetes uses the network interface of the default gateway to defines a node-ip.</p>
+                    <p>We can find the default gateway as follows:</p>
+                    <pre>
+ip route
+                    </pre>
+
+                    <p>Output example:</p>
+                    <pre>
+default via 192.168.0.1 dev eth0 ....
+                    </pre>
+                    <p>
+                        The example above shows the default gateway's interface is "eth0". When installing Kubernetes,
+                        the installer would use the network interface "eth0" to configure Kubernetes' node-ip.
+                    </p>
+
+                    <h2>Set a custom node-ip</h2>
+                    <p>After the installation of Kubernetes, it is still possible to change the node-ip.</p>
+                    <p>Open the file:</p>
+                    <pre>
+sudo vi /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+                    </pre>
+
+                    <p>Add in "KUBELET_CONFIG_ARGS="</p>
+                    <pre>
+--node-ip=[desired IP address for node-ip]
+                    </pre>
+
+                    <p>Restart kubelet</p>
+                    <pre>
+sudo systemctl daemon-reload
+sudo systemctl restart kubelet
+                    </pre>
+                    <p>If we list the Kubernetes nodes, we will see the custom IP that we set above.</p>
+
+                    <h2>Additional readings:</h2>
+                    <p>
+                        <a target="_blank" href="https://medium.com/@kanrangsan/how-to-specify-internal-ip-for-kubernetes-worker-node-24790b2884fd">
+                        How to specify Internal-IP for kubernetes worker node</a>
+                    </p>
+
+                </article>
+
+            </div>
+        </div>

@@ -1,0 +1,146 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Useful Linux Network commands</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2020-05-01" pubdate="pubdate">1 May 2020</time> by Alex Arica</div>
+
+
+                    <h2>Set a static IP address</h2>
+                    <p>We are going to assign the static IP address 192.168.0.2 with a gateway 192.168.0.1 to a
+                        network interface "eth1".</p>
+
+                    <h3>On Ubuntu</h3>
+
+                    <p>Create this file:</p>
+                    <pre>
+sudo vi /etc/netplan/60-static.yaml
+                    </pre>
+
+                    <p>Add the followings:</p>
+                    <pre>
+network:
+  version: 2
+  ethernets:
+    eth1:
+       dhcp4: no
+      addresses:
+      - 192.168.0.2/16
+      gateway4: 192.168.0.1
+                    </pre>
+
+                    <p>Save the file and apply the changes:</p>
+                    <pre>
+sudo netplan apply
+                    </pre>
+
+                    <h3>On Debian</h3>
+
+                    <p>Open this file:</p>
+                    <pre>
+sudo vi /etc/network/interfaces
+                    </pre>
+
+                    <p>Add the followings:</p>
+                    <pre>
+auto eth1
+iface eth1 inet static
+address 192.168.0.2
+netmask 255.255.0.0
+gateway 192.168.0.1
+                    </pre>
+
+                    <p>Save the file and apply the changes:</p>
+                    <pre>
+sudo systemctl restart networking
+                    </pre>
+
+                    <h2>Curl</h2>
+                    <p>Make a request and display the headers sent and the response received:</p>
+                    <pre>
+curl -livk 137.74.127.96
+                    </pre>
+
+                    <h2>Allowed private addresses</h2>
+                    <p>The following are the reserved IP ranges which are considered as private IPs:</p>
+                    <pre>
+10.0.0.0        -   10.255.255.255  (10/8 prefix)
+172.16.0.0      -   172.31.255.255  (172.16/12 prefix)
+192.168.0.0     -   192.168.255.255 (192.168/16 prefix)
+                    </pre>
+                    <p>Mode details about <a target="_blank" href="https://tools.ietf.org/html/rfc1918">rfc1918</a></p>
+
+                    <h2>Network IP and interfaces</h2>
+
+                    <p>See all interfaces and their IP addresses:</p>
+                    <pre>
+ip a
+ip adr
+ip address
+                    </pre>
+
+                    <p>Show the gateway from which a server access to internet:</p>
+                    <pre>
+ip route show
+                    </pre>
+
+                    <p>Add a default gateway:</p>
+                    <pre>
+ip route add default via 192.168.0.1 dev eth1
+                    </pre>
+
+                    <p>Delete ip address from interface:</p>
+                    <pre>
+sudo ip address del 192.168.0.1/16 dev eth1
+                    </pre>
+
+                    <p>Restart networking:</p>
+                    <pre>
+sudo systemctl restart networking
+                    </pre>
+
+                    <p>Bring up interface:</p>
+                    <pre>
+sudo ip link set eth1 up
+                    </pre>
+
+                    <p>Bring down interface:</p>
+                    <pre>
+sudo ip link set eth1 down
+                    </pre>
+
+                    <h2>Scan ports</h2>
+
+                    <p>Scan 1st 1000 ports of a remote host:</p>
+                    <pre>
+# if not installed run: apt install nmap
+sudo nmap -Pn [ip address to scan]
+                    </pre>
+
+                    <p>Scan port 22:</p>
+                    <pre>
+sudo nmap -Pn -p 22 [ip address to scan]
+                    </pre>
+
+                    <p>Scan a range of ports between 0 and 65535:</p>
+                    <pre>
+sudo nmap -Pn -p0-65535 [ip address to scan]
+                    </pre>
+
+                    <p>Scan all 65535 ports:</p>
+                    <pre>
+sudo nmap -Pn -p- [ip address to scan]
+                    </pre>
+
+                    <p>Run the below from the server and compare the values from nmap:</p>
+                    <pre>
+netstat -tuplen
+                    </pre>
+
+                </article>
+
+            </div>
+        </div>

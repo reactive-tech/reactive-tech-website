@@ -1,0 +1,61 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Kubernetes generate new tokens</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2020-11-23" pubdate="pubdate">23 November 2020</time> by Alex Arica</div>
+
+                    <p>
+                        A new node can only join a Kubernetes cluster by providing “token” and “discovery-token-ca-cert-hash”.
+                        We are going to show how to generate those values. Those hashes are temporary and a token expires in 24h.
+                    </p>
+                    <p>The commands below were executed with "kubeadm" on the cluster's control-panel.</p>
+
+                    <h2>Generate a new "token"</h2>
+
+                    <p>List existing tokens:</p>
+                    <pre>
+kubeadm token list
+                    </pre>
+
+                    <p>If the above does not display anything, you have to create a new token:</p>
+                    <pre>
+kubeadm token generate
+                    </pre>
+
+                    <p>Output example:</p>
+                    <pre>
+7nx60l.fy8n4s8p6ruz8uiu
+                    </pre>
+
+                    <p>Copy that value and use it as follows:</p>
+                    <pre>
+kubeadm token create 7nx60l.fy8n4s8p6ruz8uiu
+                    </pre>
+
+                    <p>A token is generated, valid for 24h. We should see it in the list of tokens:</p>
+                    <pre>
+kubeadm token list
+                    </pre>
+
+                    <h2>Generate a new "discovery-token-ca-cert-hash"</h2>
+
+                    <p>Run this command:</p>
+                    <pre>
+openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //'
+                    </pre>
+
+                    <p>Output example:</p>
+                    <pre>
+3afa7b092bdb7b8c154f8ab9bc0ebd67586c4d3f59b4028ef0036d39674ade2f
+                    </pre>
+
+                    <p>You can use the generated "discovery-token-ca-cert-hash" and "token" to join an existing Kubernetes node.</p>
+
+                </article>
+
+            </div>
+        </div>

@@ -1,0 +1,353 @@
+<gigo-include-in file="includes/blog-template.html" />
+
+        <div class="contentsBox">
+            <div class="contentsBoxHeader blogTitle">Publicly expose a website via HTTPS with Ingress Nginx, Cert-manager, Let's Encrypt and Kubernetes</div>
+            <div class="contentsBoxBody">
+
+                <article>
+
+                    <div class="publicationDetails"><time datetime="2021-03-18" pubdate="pubdate">18 March 2021</time> by Alex Arica</div>
+
+                    <p>In this blog post we are going to publicly expose a website via HTTPS with Ingress Nginx controller
+                        in a bare-metal Kubernetes cluster. We are going to explain how to integrate Let’s Encrypt with
+                        Kubernetes so that SSL certificates are issued and renewed automatically for our domain names.</p>
+
+                    <p>We assume that you read the blog post about how to
+                        <a href="publicly-expose-website-via-http-kubernetes.html">expose a website via HTTP using Ingress Nginx</a>.
+                        This current page is a continuation of that blog post.</p>
+
+                    <h2>Let's Encrypt</h2>
+                    <p><a target="_blank" href="https://letsencrypt.org/how-it-works/">Let’s Encrypt</a> is a certificate
+                        authority (CA) which provides HTTPS certificates for domain names without the need to manually
+                        create an account with them. The process of requesting certificates and renewing them is fully
+                        automated and free.
+                    </p>
+
+                    <h2>Install Cert-manager controller</h2>
+                    <p>We are going to use <a target="_blank" href="https://cert-manager.io/docs/">Cert-manager</a>
+                        which is a controller handling the creating and renewal of SSL certificates in Kubernetes.
+                        It integrates well with the Ingress Nginx controller.
+                    </p>
+
+                    <p>Installation command:</p>
+                    <pre>
+kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/[version]/cert-manager.yaml
+                    </pre>
+
+                    <p>
+                        Replace the variable "[version]" by the latest version available in the
+                        <a target="_blank" href="https://github.com/jetstack/cert-manager/releases">official Cert-manager's GitHub page</a>.
+                    </p>
+
+                    <p>Once the installation command above is run, Cert-manager controller creates a namespace "cert-manager"
+                        where it installs its custom resources. Let's wait until that all cert-manager pods are running:</p>
+                    <pre>
+kubectl get pods -n cert-manager -w
+                    </pre>
+
+                    <h2>Create a certificate issuer</h2>
+                    <p>
+                        Once Cert-manager is ready, we are going to create a "ClusterIssuer" using Let's Encrypt to issue SSL certificates.
+                        The idea is to create this set-up once for the entire cluster. And we will be able to reference that resource
+                        from any namespace for websites which meed a certificate for their domain names. That's the reason
+                        why "ClusterIssuer" resource is used rather than an "Issuer" resource.
+                    </p>
+                    <p>
+                        A "ClusterIssuer" allows to register to a certificate authority like Let's Encrypt. Then Let's Encrypt can issue certificates.
+                        Each time a resource like an Ingress Nginx controller wants to create a SSL certificate for a domain name,
+                        it will delegate this operation to a "ClusterIssuer" to request the SSL certificate.
+                    </p>
+                    <p>
+                        We are going to create a staging issuer so that we can test the process is working. I highly recommend
+                        creating a staging issuer before using a prod one, because it will allow to test our installation.
+                    </p>
+                    <p>In a new file:</p>
+                    <pre>
+vi lets-encrypt-staging-issuer.yaml
+                    </pre>
+                    <p>Add:</p>
+                    <pre>
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: lets-encrypt-staging
+spec:
+  acme:
+      email: contact@reactive.tech.io
+      server: https://acme-staging-v02.api.letsencrypt.org/directory
+      privateKeySecretRef:
+         name: lets-encrypt-staging
+    solvers:
+        - http01:
+                 ingress:
+                      class: nginx
+                    </pre>
+                    <p>
+                        In the yaml above, we configured the private key to be in the secret "lets-encrypt-staging".
+                        Cert-Manager will create it with the key provided by Let's Encrypt. Please replace
+                        "email: contact@reactive.tech.io" by your email address. Let's encrypt will us that email to notify
+                        about certificate expiry dates, etc...
+                    </p>
+
+                    <p>Deploy it:</p>
+                    <pre>
+kubectl apply -f lets-encrypt-staging-issuer.yaml
+                    </pre>
+
+                    <p>Check the issuer is ready:</p>
+                    <pre>
+kubectl get ClusterIssuer -n cert-manager -w
+                    </pre>
+
+                    <p>For example:</p>
+                    <pre>
+NAME                   READY   AGE
+lets-encrypt-staging   True    5s
+                    </pre>
+
+                    <p>
+                        In the yaml above, we configured the private key to be in the secret "lets-encrypt-staging".
+                        Let's check that Cert-Manager created it:
+                    </p>
+                    <pre>
+kubectl get secret lets-encrypt-staging -n cert-manager
+                    </pre>
+
+                    <p>
+                        Once our ClusterIssuer is ready, we can configure our existing Ingress configuration
+                        so that the domain name "www.reactive-tech.io" has an SSL certificate.
+                    </p>
+
+                    <h2>Issue a staging certificate for "www.reactive-tech.io"</h2>
+                    <p>
+                        We are going to create a staging SSL certificate for the domain "www.reactive-tech.io" by referencing
+                        the "ClusterIssuer" that we have created.
+                    </p>
+                    <p>Modify the existing ingress resource that we have created in the
+                        <a target="_blank" href="publicly-expose-website-via-http-kubernetes.html">previous blog post</a>, by updating the file:</p>
+                    <pre>
+vi reactive-tech-website-ingress.yaml
+                    </pre>
+                    <p>And add the configuration marked in bold:</p>
+                    <pre>
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reactive-tech-website
+  namespace: static-websites
+  annotations:
+    nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+    <b>cert-manager.io/issuer-kind: "ClusterIssuer"
+    cert-manager.io/issuer: "lets-encrypt-staging"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"</b>
+spec:
+  <b>tls:
+    - hosts:
+        - www.reactive-tech.io
+      secretName: reactive-tech-website-cert-staging</b>
+  rules:
+    - host: "www.reactive-tech.io"
+      http:
+        paths:
+          - pathType: Prefix
+            path: "/"
+            backend:
+              service:
+                name: reactive-tech-website
+                port:
+                  number: 80
+
+                    </pre>
+
+                    <p>
+                        The new lines marked in bold above, are instructing Ingress controller to delegate the process of
+                        issuing a SSL certificate to a resource of type "ClusterIssuer" with name "lets-encrypt-staging".
+                        And the line "nginx.ingress.kubernetes.io/ssl-redirect: false" instructs to NOT force a redirection from HTTP
+                        to HTTPS. Otherwise, all requests for the domain www.reactive-tech-io will go through HTTPS (port 443) even
+                        if the initial call was via HTTP (port 80). We will enable this option later when we will issue a production SSL certificate.
+                    </p>
+                    <p>
+                        The configuration "secretName: reactive-tech-website-cert-staging" instruct Cert-Manager to create
+                        a secret and store the SSL certificate keys in it. The secret's namespace would be the same as the Ingress
+                        configuration. In this case the namespace used is "static-websites".
+                    </p>
+
+                    <p>Apply the new configurations:</p>
+                    <pre>
+kubectl apply -f reactive-tech-website-ingress.yaml
+                    </pre>
+
+                    <p>Let's check the secret "reactive-tech-website-cert-staging" was created by Cert-manager:</p>
+                    <pre>
+kubectl get secret reactive-tech-website-cert-staging -n static-websites
+                    </pre>
+
+                    <p>Next, we are going to check that the staging certificate was successfully issued by Let's Encrypt:</p>
+                    <pre>
+kubectl get clusterissuer,certificate,certificaterequest,order,challenge -n static-websites
+                    </pre>
+                    <p>All listed resources should have their column "READY" set to "true". For example:</p>
+                    <pre>
+NAME                                                 READY   AGE
+clusterissuer.cert-manager.io/lets-encrypt-staging   True    47s
+
+NAME                                                             READY   SECRET                               AGE
+certificate.cert-manager.io/reactive-tech-website-cert-staging   True    reactive-tech-website-cert-staging   46s
+
+NAME                                                                          READY   AGE
+certificaterequest.cert-manager.io/reactive-tech-website-cert-staging-f7h2r   True    46s
+
+NAME                                                                            STATE   AGE
+order.acme.cert-manager.io/reactive-tech-website-cert-staging-f7h2r-815108175   valid   46s
+                    </pre>
+
+                    <p>
+                        Once the resources above all are ready, it means that Let's Encrypt assigned a staging SSL certificate
+                        for the domain "www.reactive-tech.io". The way it works is the Cert-Manager controller creates
+                        an endpoint using Ingress, such as: "www.reactive-tech.io/.well-known/acme-challenge/[token]".
+                        <br/> The [token] variable is a long string such as "w5tYb92Vt0GAHm1i5a2FXSk2VHYbmHOFTzTItV2U5T".
+                        Then Let's Encrypt calls that endpoint to validate the domain name and then assigns an SSL certificate.
+                    </p>
+
+                    <h2>Troubleshooting</h2>
+                    <p>
+                        If the resources above are NOT ready, that means Let's Encrypt could not issue an SSL certificate.
+                        And this could happen if you are using an external load balancer to route the traffics to Ingress
+                        Nginx controller. Please make sure to configure your load balancer using TCP option rather than HTTP
+                        and HTTPS when defining the routing rules. Otherwise, if HTTP and HTTPS options are used, the load balancer is likely to
+                        rewrite the routing rules preventing Let's Encrypt to validate your domain name using the endpoint
+                        "www.reactive-tech.io/.well-known/acme-challenge/[token]".
+                    </p>
+                    <p>Cert-Manager's doc has a page about <a target="_blank" href="https://cert-manager.io/docs/faq/acme/">troubleshooting</a>.</p>
+
+                    <h2>Call the website via HTTPS using the staging cert</h2>
+                    <p>
+                        The last step is to call the website "www.reactive-tech.io" via HTTPS. The browser should warn you
+                        that the SSL certificate is not signed by a certificate authority. This is normal since it is a
+                        staging certificate. Accept the risk and you should be able to access to the website.
+                    </p>
+                    <p>
+                        The next step is to create a valid production SSL certificate which will be accepted as valid by the browsers.
+                    </p>
+
+                    <h2>Issue a production certificate for "www.reactive-tech.io"</h2>
+                    <p>First, we need to crete a production ClusterIssuer using Let's Encrypt. In a new file:</p>
+                    <pre>
+vi lets-encrypt-prod-issuer.yaml
+                    </pre>
+
+                    <p>Add the configurations below. We marked in bold the differences with the staging ClusterIssuer:</p>
+                    <pre>
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: <b>lets-encrypt-prod</b>
+spec:
+  acme:
+      email: contact@reactive.tech.io
+      server: <b>https://acme-v02.api.letsencrypt.org/directory</b>
+      privateKeySecretRef:
+         name: <b>lets-encrypt-prod</b>
+    solvers:
+        - http01:
+                 ingress:
+                      class: nginx
+                    </pre>
+
+                    <p>Deploy it:</p>
+                    <pre>
+kubectl apply -f lets-encrypt-prod-issuer.yaml
+                    </pre>
+
+                    <p>Check the issuer is ready:</p>
+                    <pre>
+kubectl get ClusterIssuer -n cert-manager -w
+                    </pre>
+
+                    <p>For example:</p>
+                    <pre>
+NAME                READY   AGE
+lets-encrypt-prod   True    5s
+                    </pre>
+
+                    <p>
+                        Once the ClusterIssuer is ready, we can generate a production certificate by modifying the existing
+                        Ingress configuration. Open the existing file:
+                    </p>
+                    <pre>
+vi reactive-tech-website-ingress.yaml
+                    </pre>
+                    <p>And modify using the configurations marked in bold:</p>
+                    <pre>
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: reactive-tech-website
+  namespace: static-websites
+  annotations:
+    nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
+    cert-manager.io/issuer-kind: "ClusterIssuer"
+    cert-manager.io/issuer: <b>"lets-encrypt-prod"</b>
+    nginx.ingress.kubernetes.io/ssl-redirect: <b>"true"</b>
+spec:
+  tls:
+    - hosts:
+        - www.reactive-tech.io
+      secretName: <b>reactive-tech-website-cert-prod</b>
+  rules:
+    - host: "www.reactive-tech.io"
+      http:
+        paths:
+          - pathType: Prefix
+            path: "/"
+            backend:
+              service:
+                name: reactive-tech-website
+                port:
+                  number: 80
+                    </pre>
+
+                    <p>Apply the changes:</p>
+                    <pre>
+kubectl apply -f reactive-tech-website-ingress.yaml
+                    </pre>
+
+                    <p>Let's check the secret "reactive-tech-website-cert-prod" was created by Cert-manager:</p>
+                    <pre>
+kubectl get secret reactive-tech-website-cert-prod -n static-websites
+                    </pre>
+
+                    <p>Next, we are going to check that the production certificate was successfully issued by Let's Encrypt:</p>
+                    <pre>
+kubectl get clusterissuer,certificate,certificaterequest,order,challenge -n static-websites
+                    </pre>
+                    <p>All listed resources should have their column "READY" set to "true". For example:</p>
+                    <pre>
+NAME                                                READY   AGE
+clusterissuer.cert-manager.io/lets-encrypt-prod     True    47s
+
+NAME                                                             READY   SECRET                               AGE
+certificate.cert-manager.io/reactive-tech-website-cert-prod      True    reactive-tech-website-cert-staging   46s
+
+NAME                                                                       READY   AGE
+certificaterequest.cert-manager.io/reactive-tech-website-cert-prod-f7h2r   True    46s
+
+NAME                                                                         STATE   AGE
+order.acme.cert-manager.io/reactive-tech-website-cert-prod-f7h2r-815108175   valid   46s
+                    </pre>
+
+                    <h2>Call the website via HTTPS using the production cert</h2>
+                    <p>
+                        The last step is to call the website "www.reactive-tech.io" via HTTPS. The browser should accept
+                        the SSL certificate without any warning since it was signed by the certificate authority Let's Encrypt.
+                        We should be able to access to the website via HTTPS.
+                    </p>
+
+                    <h2>Additional readings</h2>
+                    <p>Cert-Manager's doc about <a target="_blank" href="https://cert-manager.io/docs/installation/kubernetes/">How to install the controller in Kubernetes</a>.</p>
+                    <p>Cert-Manager's doc about <a target="_blank" href="https://cert-manager.io/docs/tutorials/acme/ingress/">How to install it with Ingress Nginx and Let's Encrypt</a>.</p>
+
+                </article>
+
+            </div>
+        </div>
