@@ -1,0 +1,16 @@
+spec:
+  template:
+    spec:
+      volumes:
+        - name: reactive-tech-website-dev-putput-pv
+          hostPath:
+            path: /usr/share/dev-output/static-websites/reactive-tech-website/image
+            type: DirectoryOrCreate
+
+      containers:
+        - image: localhost:5000/reactivetechio/reactive-tech-website:latest
+          name: reactive-tech-website
+
+          volumeMounts:
+            - name: reactive-tech-website-dev-putput-pv
+              mountPath: /usr/share/nginx/html
