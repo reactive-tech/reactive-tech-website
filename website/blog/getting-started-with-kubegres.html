@@ -6,14 +6,19 @@
 
                 <article>
 
-                    <div class="publicationDetails"><time datetime="2021-03-03" pubdate="pubdate">10 April 2021</time> by Alex Arica</div>
+                    <div class="publicationDetails"><time datetime="2021-04-10" pubdate="pubdate">10 April 2021</time> by Alex Arica</div>
 
                     <p><a target="_blank" href="https://www.kubegres.io/">Kubegres</a></b> is a Kubernetes operator
-                        allowing to deploy a cluster of PostgreSql pods with data replication and failover enabled
+                        allowing to deploy one or many clusters of PostgreSql pods with data replication and failover enabled
                         out-of-the box. It brings simplicity when using PostgreSql considering how
                         complex managing stateful-set's life-cycle and data replication could be with Kubernetes.</p>
                     <p>Kubegres has the following features:
                     <ul>
+                        <li>
+                            It can manage one or many clusters of Postgres instances. Each cluster of Postgres instances
+                            is created using a YAML of "kind: Kubegres". Each cluster is self-contained and is identified
+                            by its unique name and namespace.
+                        </li>
                         <li>
                             It creates a cluster of PostgreSql servers with data replication enabled: it creates a
                             Primary PostgreSql pod and a number of Replica PostgreSql pods and replicates primary's

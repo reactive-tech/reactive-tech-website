@@ -6,7 +6,7 @@
 
                 <article>
 
-                    <div class="publicationDetails"><time datetime="2021-03-18" pubdate="pubdate">18 March 2021</time> by Alex Arica</div>
+                    <div class="publicationDetails"><time datetime="2022-05-21" pubdate="pubdate">21 May 2022</time> by Alex Arica</div>
 
                     <p>In this blog post we are going to publicly expose a website via HTTPS with Ingress Nginx controller
                         in a bare-metal Kubernetes cluster. We are going to explain how to integrate Let’s Encrypt with
@@ -124,7 +124,7 @@ kubectl get secret lets-encrypt-staging -n cert-manager
                         the "ClusterIssuer" that we have created.
                     </p>
                     <p>Modify the existing ingress resource that we have created in the
-                        <a target="_blank" href="publicly-expose-website-via-http-kubernetes.html">previous blog post</a>, by updating the file:</p>
+                        <a href="publicly-expose-website-via-http-kubernetes.html">previous blog post</a>, by updating the file:</p>
                     <pre>
 vi reactive-tech-website-ingress.yaml
                     </pre>
@@ -136,6 +136,7 @@ metadata:
   name: reactive-tech-website
   namespace: static-websites
   annotations:
+    kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
     <b>cert-manager.io/issuer-kind: "ClusterIssuer"
     cert-manager.io/issuer: "lets-encrypt-staging"
@@ -248,10 +249,10 @@ spec:
       server: <b>https://acme-v02.api.letsencrypt.org/directory</b>
       privateKeySecretRef:
          name: <b>lets-encrypt-prod</b>
-    solvers:
-        - http01:
-                 ingress:
-                      class: nginx
+      solvers:
+         - http01:
+            ingress:
+               class: nginx
                     </pre>
 
                     <p>Deploy it:</p>
@@ -285,6 +286,7 @@ metadata:
   name: reactive-tech-website
   namespace: static-websites
   annotations:
+    kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/from-to-www-redirect: "true"
     cert-manager.io/issuer-kind: "ClusterIssuer"
     cert-manager.io/issuer: <b>"lets-encrypt-prod"</b>

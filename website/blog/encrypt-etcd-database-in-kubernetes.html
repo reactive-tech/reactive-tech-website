@@ -65,7 +65,7 @@ spec:
     ...
     - --tls-private-key-file=/etc/kubernetes/pki/apiserver.key
     <b>- --encryption-provider-config=/etc/kubernetes/pki/etcd-encryption.yaml</b>
-    image: k8s.gcr.io/kube-apiserver:v1.20.5
+    image: k8s.gcr.io/kube-apiserver:v1.24.0
                     </pre>
 
                     <p>Wait for "kube-apiserver" to restart. No need to restart it manually, it should pick up the new configuration automatically.
